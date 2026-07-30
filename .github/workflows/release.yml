@@ -25,8 +25,8 @@ jobs:
       # which defeats npm trusted publishing over OIDC.
       - uses: actions/setup-node@v5
         with: { node-version: 24, cache: pnpm }
-      # `changeset publish` delegates to pnpm. Native OIDC publishing requires
-      # pnpm >= 11.11; packageManager currently pins 11.18.0.
+      # The release script delegates publishing to pnpm. Native OIDC publishing
+      # requires pnpm >= 11.11; packageManager currently pins 11.18.0.
       - name: Assert pnpm supports native OIDC publishing
         run: |
           node -e '
