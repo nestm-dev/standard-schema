@@ -4,5 +4,7 @@
   "initialVersions": {
     "@nestm/standard-schema": "0.1.0-alpha.0"
   },
-  "changesets": []
+  "changesets": [
+    "initial-release"
+  ]
 }
