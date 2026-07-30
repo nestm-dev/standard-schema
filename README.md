@@ -42,22 +42,22 @@ This is intentional. Runtime return metadata records `Promise<Product>` as `Prom
 Install the package alongside NestJS 12 and a Standard Schema implementation:
 
 ```sh
-yarn add @nestm/nestjs-standard-schema
-yarn add @nestjs/common@12.0.0-alpha.5 @nestjs/core@12.0.0-alpha.5
-yarn add reflect-metadata rxjs
+pnpm add @nestm/nestjs-standard-schema
+pnpm add @nestjs/common@12.0.0-alpha.5 @nestjs/core@12.0.0-alpha.5
+pnpm add reflect-metadata rxjs
 ```
 
 For the Zod examples:
 
 ```sh
-yarn add zod@4.4.3
+pnpm add zod@4.4.3
 ```
 
 The commands show the NestJS prerelease used by this package's test suite. Pin the exact framework versions you test instead of leaving a floating prerelease tag in `package.json`.
 
-NestJS 12 alpha packages currently declare some Nest 11 peer ranges internally. Yarn may therefore report `YN0060` peer warnings even when every Nest package is pinned to the same 12 alpha. Those warnings originate in the upstream prerelease package metadata rather than this adapter.
+NestJS 12 alpha packages currently declare some Nest 11 peer ranges internally. Package managers may therefore report peer warnings even when every Nest package is pinned to the same 12 alpha. Those warnings originate in the upstream prerelease package metadata rather than this adapter.
 
-The same upstream mismatch can make npm stop with `ERESOLVE`. For this alpha combination, install with `npm install --legacy-peer-deps` or use Yarn and review its warnings. Remove that workaround once NestJS 12 publishes corrected peer ranges.
+The same upstream mismatch can make npm stop with `ERESOLVE`. For this alpha combination, install with `npm install --legacy-peer-deps` or use pnpm and review its warnings. Remove that workaround once NestJS 12 publishes corrected peer ranges.
 
 ## Quick start
 
@@ -304,7 +304,7 @@ The package focuses on request DTO discovery and response schema metadata. It do
 ## Compatibility
 
 - NestJS 12 prereleases
-- Node.js 20.19 or newer within Node 20, and Node.js 22.12 or newer
+- Node.js 22.12 or newer
 - Standard Schema-compatible schema libraries
 
 Because NestJS 12 is still in alpha, keep package and framework versions pinned in applications and review release notes before upgrading.
