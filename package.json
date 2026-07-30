@@ -19,6 +19,11 @@
       "types": "./dist/index.d.ts",
       "import": "./dist/index.js"
     },
+    "./plugin": {
+      "types": "./dist/plugin/index.d.cts",
+      "require": "./dist/plugin/index.cjs",
+      "default": "./dist/plugin/index.cjs"
+    },
     "./package.json": "./package.json"
   },
   "main": "./dist/index.js",
@@ -52,14 +57,16 @@
     "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json",
     "format": "prettier --write . --ignore-unknown",
     "format:check": "prettier --check . --ignore-unknown",
-    "lint": "oxlint src/ test/ scripts/ vitest.config.ts vitest.config.e2e.ts",
+    "lint": "oxlint src/ test/ scripts/ vitest.config.ts vitest.config.e2e.ts vitest.config.plugin.ts",
     "lint:package": "publint",
     "typecheck": "tsc --noEmit",
-    "test": "pnpm run test:unit && pnpm run test:e2e",
+    "test": "pnpm run test:unit && pnpm run test:plugin && pnpm run test:e2e && pnpm run test:packed",
     "test:unit": "vitest run",
+    "test:plugin": "pnpm run build && vitest run --config ./vitest.config.plugin.ts",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "test:packed": "node scripts/test-packed-consumer.mjs",
     "check": "pnpm run lint && pnpm run format:check && pnpm run typecheck",
     "verify:pack": "pnpm run build && publint --strict",
     "prepack": "pnpm run build",
@@ -73,13 +80,21 @@
     "@nestjs/common": "^12.0.0-alpha.5",
     "@nestjs/core": "^12.0.0-alpha.5",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "typescript": ">=5.5 <7"
+  },
+  "peerDependenciesMeta": {
+    "typescript": {
+      "optional": true
+    }
   },
   "devDependencies": {
     "@changesets/cli": "2.31.1",
+    "@nestjs/cli": "12.0.0-alpha.6",
     "@nestjs/common": "12.0.0-alpha.5",
     "@nestjs/core": "12.0.0-alpha.5",
     "@nestjs/platform-express": "12.0.0-alpha.5",
+    "@nestjs/schematics": "12.0.0-alpha.9",
     "@nestjs/testing": "12.0.0-alpha.5",
     "@types/node": "26.1.2",
     "@types/supertest": "7.2.1",

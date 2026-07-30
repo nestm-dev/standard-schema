@@ -1,0 +1,11 @@
+packages:
+  - '.'
+
+peerDependencyRules:
+  allowedVersions:
+    '@nestjs/common': '12'
+    '@nestjs/core': '12'
+    '@nestjs/platform-express': '12'
+
+allowBuilds:
+  '@nestjs/core': false

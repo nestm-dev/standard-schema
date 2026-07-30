@@ -30,9 +30,16 @@
   },
   "include": [
     "src/**/*.ts",
+    "src/**/*.cts",
     "test/**/*.ts",
     "vitest.config.ts",
-    "vitest.config.e2e.ts"
+    "vitest.config.e2e.ts",
+    "vitest.config.plugin.ts"
   ],
-  "exclude": ["node_modules", "dist", "coverage"]
+  "exclude": [
+    "node_modules",
+    "dist",
+    "coverage",
+    "test/fixtures/nest-cli-consumer"
+  ]
 }
