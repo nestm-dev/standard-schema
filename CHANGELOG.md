@@ -1,5 +1,11 @@
 # @nestm/standard-schema
 
+## 0.1.0-alpha.2
+
+### Patch Changes
+
+- 753a4f3: Keep prereleases on the configured npm dist-tag when publishing through GitHub OIDC.
+
 ## 0.1.0-alpha.1
 
 ### Minor Changes
