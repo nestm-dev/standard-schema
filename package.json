@@ -64,7 +64,7 @@
     "verify:pack": "pnpm run build && publint --strict",
     "prepack": "pnpm run build",
     "changeset": "changeset",
-    "release": "changeset publish"
+    "release": "node scripts/publish.mjs"
   },
   "dependencies": {
     "@standard-schema/spec": "1.1.0"
