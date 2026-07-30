@@ -63,7 +63,7 @@ npm trust github @nestm/standard-schema \
   --allow-publish
 ```
 
-After that one-time setup, merge the Changesets release pull request to let GitHub Actions publish the next alpha through OIDC with provenance.
+After that one-time setup, merge the Changesets release pull request to let GitHub Actions publish the next alpha through OIDC with provenance. The release script reads `.changeset/pre.json` and passes its prerelease tag to `changeset publish`, so `alpha` keeps pointing to the newest alpha. After prerelease mode is exited, publishing falls back to Changesets' normal stable tag behavior automatically.
 
 ## Design guidelines
 
