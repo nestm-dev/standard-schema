@@ -42,7 +42,7 @@ This is intentional. Runtime return metadata records `Promise<Product>` as `Prom
 Install the package alongside NestJS 12 and a Standard Schema implementation:
 
 ```sh
-pnpm add @nestm/standard-schema
+pnpm add @nestm/standard-schema@alpha
 pnpm add @nestjs/common@12.0.0-alpha.5 @nestjs/core@12.0.0-alpha.5
 pnpm add reflect-metadata rxjs
 ```
