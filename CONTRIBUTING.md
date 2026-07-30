@@ -1,6 +1,6 @@
 # Contributing
 
-Thank you for helping improve `@nestm/nestjs-standard-schema`.
+Thank you for helping improve `@nestm/standard-schema`.
 
 The project follows NestJS 12's prerelease Standard Schema API. Changes should keep the core integration schema-vendor-neutral and should delegate parsing to Nest's native Standard Schema components.
 
@@ -56,9 +56,9 @@ npm publish --access public --tag alpha
 Complete npm's browser or two-factor authentication flow locally; never add an npm token to this repository. Then bind the package to the release workflow:
 
 ```sh
-npm trust github @nestm/nestjs-standard-schema \
+npm trust github @nestm/standard-schema \
   --file release.yml \
-  --repository nestm-dev/nestjs-standard-schema \
+  --repository nestm-dev/standard-schema \
   --environment release \
   --allow-publish
 ```

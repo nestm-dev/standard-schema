@@ -1,5 +1,5 @@
 {
-  "name": "@nestm/nestjs-standard-schema",
+  "name": "@nestm/standard-schema",
   "version": "0.1.0-alpha.0",
   "description": "DTO ergonomics for NestJS 12's native Standard Schema validation and serialization.",
   "license": "MIT",
@@ -32,11 +32,11 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nestm-dev/nestjs-standard-schema.git"
+    "url": "git+https://github.com/nestm-dev/standard-schema.git"
   },
-  "homepage": "https://github.com/nestm-dev/nestjs-standard-schema#readme",
+  "homepage": "https://github.com/nestm-dev/standard-schema#readme",
   "bugs": {
-    "url": "https://github.com/nestm-dev/nestjs-standard-schema/issues"
+    "url": "https://github.com/nestm-dev/standard-schema/issues"
   },
   "keywords": [
     "nestjs",

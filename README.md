@@ -1,11 +1,11 @@
-# @nestm/nestjs-standard-schema
+# @nestm/standard-schema
 
 DTO ergonomics for NestJS 12's native [Standard Schema](https://standardschema.dev/) validation and serialization.
 
 > [!CAUTION]
 > NestJS 12 is currently prerelease software. This package is experimental and may change as Nest's native Standard Schema API stabilizes.
 
-`@nestm/nestjs-standard-schema` connects runtime DTO classes to the Standard Schema support built into NestJS 12. It is schema-vendor-neutral: Zod is used in the examples, but the library API accepts Standard Schema-compatible schemas.
+`@nestm/standard-schema` connects runtime DTO classes to the Standard Schema support built into NestJS 12. It is schema-vendor-neutral: Zod is used in the examples, but the library API accepts Standard Schema-compatible schemas.
 
 ## Why this exists
 
@@ -42,7 +42,7 @@ This is intentional. Runtime return metadata records `Promise<Product>` as `Prom
 Install the package alongside NestJS 12 and a Standard Schema implementation:
 
 ```sh
-pnpm add @nestm/nestjs-standard-schema
+pnpm add @nestm/standard-schema
 pnpm add @nestjs/common@12.0.0-alpha.5 @nestjs/core@12.0.0-alpha.5
 pnpm add reflect-metadata rxjs
 ```
@@ -65,7 +65,7 @@ The same upstream mismatch can make npm stop with `ERESOLVE`. For this alpha com
 
 ```ts
 // products.dto.ts
-import { createStandardSchemaDto } from '@nestm/nestjs-standard-schema';
+import { createStandardSchemaDto } from '@nestm/standard-schema';
 import { z } from 'zod';
 
 export const CreateProductSchema = z.object({
@@ -99,7 +99,7 @@ The generated DTO class is a runtime metadata carrier. The controller receives t
 ```ts
 // app.module.ts
 import { Module } from '@nestjs/common';
-import { StandardSchemaModule } from '@nestm/nestjs-standard-schema';
+import { StandardSchemaModule } from '@nestm/standard-schema';
 import { ProductsController } from './products.controller.js';
 
 @Module({
@@ -116,7 +116,7 @@ export class AppModule {}
 ```ts
 // products.controller.ts
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { StandardSchemaResponse } from '@nestm/nestjs-standard-schema';
+import { StandardSchemaResponse } from '@nestm/standard-schema';
 import { CreateProductDto, ProductResponseDto } from './products.dto.js';
 
 @Controller('products')
