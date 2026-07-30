@@ -1,0 +1,96 @@
+{
+  "name": "@nestm/nestjs-standard-schema",
+  "version": "0.1.0-alpha.0",
+  "description": "DTO ergonomics for NestJS 12's native Standard Schema validation and serialization.",
+  "license": "MIT",
+  "author": "Kauan Guesser",
+  "type": "module",
+  "sideEffects": false,
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE",
+    "CHANGELOG.md",
+    "CONTRIBUTING.md",
+    "SECURITY.md"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "engines": {
+    "node": "^20.19.0 || >=22.12.0"
+  },
+  "packageManager": "yarn@4.4.0",
+  "publishConfig": {
+    "access": "public",
+    "tag": "next"
+  },
+  "resolutions": {
+    "multer": "2.2.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nestm-dev/nestjs-standard-schema.git"
+  },
+  "homepage": "https://github.com/nestm-dev/nestjs-standard-schema#readme",
+  "bugs": {
+    "url": "https://github.com/nestm-dev/nestjs-standard-schema/issues"
+  },
+  "keywords": [
+    "nestjs",
+    "standard-schema",
+    "dto",
+    "validation",
+    "serialization",
+    "zod",
+    "valibot",
+    "arktype"
+  ],
+  "scripts": {
+    "build": "node scripts/clean.mjs && tsc -p tsconfig.build.json",
+    "format": "prettier --write . --ignore-unknown",
+    "format:check": "prettier --check . --ignore-unknown",
+    "lint": "oxlint src/ test/ scripts/ vitest.config.ts vitest.config.e2e.ts",
+    "lint:package": "publint",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:cov": "vitest run --coverage",
+    "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
+    "check": "yarn format:check && yarn lint && yarn typecheck && yarn test && yarn test:e2e && yarn build && yarn lint:package",
+    "prepack": "yarn build"
+  },
+  "dependencies": {
+    "@standard-schema/spec": "1.1.0"
+  },
+  "peerDependencies": {
+    "@nestjs/common": "^12.0.0-alpha.5",
+    "@nestjs/core": "^12.0.0-alpha.5",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1"
+  },
+  "devDependencies": {
+    "@nestjs/common": "12.0.0-alpha.5",
+    "@nestjs/core": "12.0.0-alpha.5",
+    "@nestjs/platform-express": "12.0.0-alpha.5",
+    "@nestjs/testing": "12.0.0-alpha.5",
+    "@types/node": "^24.0.0",
+    "@types/supertest": "^7.2.1",
+    "@vitest/coverage-v8": "^4.1.2",
+    "oxlint": "^1.58.0",
+    "prettier": "^3.4.2",
+    "publint": "^0.3.22",
+    "reflect-metadata": "^0.2.2",
+    "rxjs": "^7.8.1",
+    "supertest": "^7.0.0",
+    "typescript": "^6.0.2",
+    "vitest": "^4.1.2",
+    "zod": "4.4.3"
+  }
+}
