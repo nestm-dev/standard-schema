@@ -5,7 +5,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     root: './',
-    include: ['src/**/*.spec.ts'],
+    include: ['src/**/*.spec.ts', 'scripts/**/*.spec.mjs'],
     clearMocks: true,
     restoreMocks: true,
     coverage: {
