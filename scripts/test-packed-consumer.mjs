@@ -7,11 +7,11 @@ import {
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, relative, resolve, sep } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
-const fixtureRoot = join(projectRoot, 'test', 'fixtures', 'nest-cli-consumer');
+const exampleRoot = join(projectRoot, 'examples', 'nest-cli-zod');
 const temporaryRoot = mkdtempSync(
   join(tmpdir(), 'nestm-standard-schema-consumer-'),
 );
@@ -20,7 +20,10 @@ const tarballPath = join(temporaryRoot, 'standard-schema.tgz');
 
 try {
   run('pnpm', ['pack', '--out', tarballPath], projectRoot);
-  cpSync(fixtureRoot, consumerRoot, { recursive: true });
+  cpSync(exampleRoot, consumerRoot, {
+    recursive: true,
+    filter: shouldCopyExamplePath,
+  });
 
   const packagePath = join(consumerRoot, 'package.json');
   const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
@@ -31,6 +34,8 @@ try {
   packageJson.dependencies['@nestm/standard-schema'] = `file:${tarballPath}`;
   synchronizeDependencyVersions(packageJson, rootPackageJson);
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
+  writeStandaloneWorkspaceConfig(consumerRoot);
+  writePluginDisabledConfigs(consumerRoot);
 
   run(
     'pnpm',
@@ -57,26 +62,75 @@ try {
   );
 
   assertCompilerOutput(consumerRoot);
-  run('node', ['verify.mjs'], consumerRoot);
+  run('node', ['test/smoke.mjs'], consumerRoot);
+  run('node', ['test/smoke.mjs'], consumerRoot, {
+    EXAMPLE_OUTPUT_DIRECTORY: 'dist-no-plugin',
+    EXAMPLE_PLUGIN_ENABLED: 'false',
+  });
 } finally {
   rmSync(temporaryRoot, { force: true, recursive: true });
 }
 
+function shouldCopyExamplePath(source) {
+  const relativePath = relative(exampleRoot, source);
+  const excludedDirectories = new Set([
+    'coverage',
+    'dist',
+    'dist-no-plugin',
+    'node_modules',
+  ]);
+
+  if (
+    relativePath.split(sep).some((segment) => excludedDirectories.has(segment))
+  ) {
+    return false;
+  }
+
+  const fileName = basename(source);
+
+  return (
+    fileName !== 'pnpm-lock.yaml' &&
+    !fileName.startsWith('.env') &&
+    !fileName.endsWith('.log')
+  );
+}
+
+function writeStandaloneWorkspaceConfig(root) {
+  writeFileSync(
+    join(root, 'pnpm-workspace.yaml'),
+    `packages:
+  - '.'
+
+peerDependencyRules:
+  allowedVersions:
+    '@nestjs/common': '12'
+    '@nestjs/core': '12'
+    '@nestjs/platform-express': '12'
+
+overrides:
+  multer: '2.2.0'
+
+allowBuilds:
+  '@nestjs/core': false
+`,
+  );
+}
+
 function assertCompilerOutput(root) {
   const pluginJavaScript = readFileSync(
-    join(root, 'dist', 'products.controller.js'),
+    join(root, 'dist', 'products', 'products.controller.js'),
     'utf8',
   );
   const plainJavaScript = readFileSync(
-    join(root, 'dist-no-plugin', 'products.controller.js'),
+    join(root, 'dist-no-plugin', 'products', 'products.controller.js'),
     'utf8',
   );
   const pluginDeclaration = readFileSync(
-    join(root, 'dist', 'products.controller.d.ts'),
+    join(root, 'dist', 'products', 'products.controller.d.ts'),
     'utf8',
   );
   const plainDeclaration = readFileSync(
-    join(root, 'dist-no-plugin', 'products.controller.d.ts'),
+    join(root, 'dist-no-plugin', 'products', 'products.controller.d.ts'),
     'utf8',
   );
 
@@ -95,6 +149,38 @@ function assertCompilerOutput(root) {
   if (pluginDeclaration !== plainDeclaration) {
     throw new Error('The compiler plugin changed declaration output.');
   }
+}
+
+function writePluginDisabledConfigs(root) {
+  writeFileSync(
+    join(root, 'nest-cli.no-plugin.json'),
+    `${JSON.stringify(
+      {
+        $schema: 'https://json.schemastore.org/nest-cli',
+        sourceRoot: 'src',
+        compilerOptions: {
+          builder: 'tsc',
+          deleteOutDir: true,
+          tsConfigPath: 'tsconfig.no-plugin.json',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  writeFileSync(
+    join(root, 'tsconfig.no-plugin.json'),
+    `${JSON.stringify(
+      {
+        extends: './tsconfig.json',
+        compilerOptions: {
+          outDir: './dist-no-plugin',
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 function synchronizeDependencyVersions(consumerPackage, rootPackage) {
@@ -117,10 +203,13 @@ function synchronizeDependencyVersions(consumerPackage, rootPackage) {
   }
 }
 
-function run(command, arguments_, cwd) {
+function run(command, arguments_, cwd, environment = {}) {
   execFileSync(command, arguments_, {
     cwd,
-    env: process.env,
+    env: {
+      ...process.env,
+      ...environment,
+    },
     stdio: 'inherit',
   });
 }

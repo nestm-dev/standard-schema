@@ -5,6 +5,7 @@
     "target": "ES2023",
     "lib": ["ES2023"],
     "rootDir": "./src",
+    "outDir": "./dist",
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
     "esModuleInterop": true,
@@ -16,6 +17,8 @@
     "experimentalDecorators": true,
     "skipLibCheck": true,
     "strict": true,
+    "exactOptionalPropertyTypes": true,
+    "noUncheckedIndexedAccess": true,
     "types": ["node"]
   },
   "include": ["src/**/*.ts"],

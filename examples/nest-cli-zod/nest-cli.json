@@ -4,7 +4,7 @@
   "compilerOptions": {
     "builder": "tsc",
     "deleteOutDir": true,
-    "tsConfigPath": "tsconfig.plugin.json",
+    "tsConfigPath": "tsconfig.json",
     "plugins": [
       {
         "name": "@nestm/standard-schema",

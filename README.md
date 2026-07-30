@@ -204,6 +204,31 @@ summary(): ProductSummaryResponseDto {
 
 Explicit `@StandardSchemaResponse(...)` and Nest `@SerializeOptions(...)` metadata always win, whether placed on the method or controller. DTO classes and raw Standard Schema objects are accepted by `@StandardSchemaResponse(...)`.
 
+## Runnable example
+
+The complete [Nest CLI + Zod products API](./examples/nest-cli-zod) uses the
+same request DTO discovery and compiler-inferred response metadata as a real
+consumer. It includes `@Body()`, `@Query()`, and `@Param()` parsing, an
+in-memory service, object and array responses, and an HTTP smoke test.
+
+From this repository:
+
+```sh
+pnpm install
+pnpm run example:start
+```
+
+Use `pnpm run example:build` when you only want to compile it.
+
+To verify the example against the actual npm artifact boundary:
+
+```sh
+pnpm run example:test
+```
+
+The verification packs this package, installs the tarball into an isolated
+copy of the example, builds through Nest's CLI, and exercises the HTTP API.
+
 ## How it works
 
 ### Requests

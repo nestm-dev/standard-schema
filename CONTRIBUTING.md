@@ -35,7 +35,9 @@ corepack enable
    pnpm run verify:pack
    ```
 
-These commands cover formatting, linting, type-checking, unit, compiler-plugin, end-to-end, and packed-consumer tests, the production build, and the published package surface.
+These commands cover formatting, linting, type-checking, unit,
+compiler-plugin, end-to-end, and example-backed packed-consumer tests, the
+production build, and the published package surface.
 
 6. Add a Changeset for user-visible changes:
 
@@ -93,7 +95,8 @@ Tests should cover both type-level ergonomics and runtime behavior where applica
 - unchanged declaration output and useful ambiguity diagnostics;
 - type-only imports, aliases, identifier collisions, custom controller suffixes, and transformer idempotence;
 - explicit response metadata overriding compiler inference;
-- the packed CommonJS plugin resolving and building through the Nest CLI `tsc` builder;
+- the public example resolving the packed CommonJS plugin and building through
+  the Nest CLI `tsc` builder;
 - invalid input producing a client validation error; and
 - invalid service output remaining a server contract error.
 
@@ -105,10 +108,14 @@ Run a focused suite while developing, then run the full checks before opening a 
 pnpm run test:unit
 pnpm run test:plugin
 pnpm run test:e2e
-pnpm run test:packed
+pnpm run example:test
 ```
 
-`test:plugin` runs transformer tests against built output. `test:packed` installs the actual tarball into a temporary Nest application and verifies both plugin-enabled and explicit-metadata builds. The aggregate `pnpm run test` command runs all four suites.
+`test:plugin` runs transformer tests against built output. `example:test`
+installs the actual tarball into an isolated copy of
+[`examples/nest-cli-zod`](./examples/nest-cli-zod) and verifies both
+plugin-enabled and plugin-disabled builds. `test:packed` remains an alias for
+that command. The aggregate `pnpm run test` command runs all four suites.
 
 ## Pull requests
 

@@ -73,6 +73,49 @@ importers:
         specifier: 4.4.3
         version: 4.4.3
 
+  examples/nest-cli-zod:
+    dependencies:
+      '@nestjs/common':
+        specifier: 12.0.0-alpha.5
+        version: 12.0.0-alpha.5(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0)
+      '@nestjs/core':
+        specifier: 12.0.0-alpha.5
+        version: 12.0.0-alpha.5(@nestjs/common@12.0.0-alpha.5(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/platform-express@12.0.0-alpha.5)(reflect-metadata@0.2.2)(rxjs@7.8.2)
+      '@nestjs/platform-express':
+        specifier: 12.0.0-alpha.5
+        version: 12.0.0-alpha.5(@nestjs/common@12.0.0-alpha.5(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.0.0-alpha.5)(supports-color@7.2.0)
+      '@nestm/standard-schema':
+        specifier: workspace:*
+        version: link:../..
+      reflect-metadata:
+        specifier: 0.2.2
+        version: 0.2.2
+      rxjs:
+        specifier: 7.8.2
+        version: 7.8.2
+      zod:
+        specifier: 4.4.3
+        version: 4.4.3
+    devDependencies:
+      '@nestjs/cli':
+        specifier: 12.0.0-alpha.6
+        version: 12.0.0-alpha.6(@types/node@26.1.2)(prettier@3.9.6)
+      '@nestjs/testing':
+        specifier: 12.0.0-alpha.5
+        version: 12.0.0-alpha.5(@nestjs/common@12.0.0-alpha.5(reflect-metadata@0.2.2)(rxjs@7.8.2)(supports-color@7.2.0))(@nestjs/core@12.0.0-alpha.5)(@nestjs/platform-express@12.0.0-alpha.5)
+      '@types/node':
+        specifier: 26.1.2
+        version: 26.1.2
+      '@types/supertest':
+        specifier: 7.2.1
+        version: 7.2.1
+      supertest:
+        specifier: 7.2.2
+        version: 7.2.2(supports-color@7.2.0)
+      typescript:
+        specifier: 6.0.2
+        version: 6.0.2
+
 packages:
 
   '@angular-devkit/core@21.2.1':
