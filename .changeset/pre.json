@@ -1,0 +1,8 @@
+{
+  "mode": "pre",
+  "tag": "alpha",
+  "initialVersions": {
+    "@nestm/nestjs-standard-schema": "0.1.0-alpha.0"
+  },
+  "changesets": []
+}

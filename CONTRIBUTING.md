@@ -6,7 +6,7 @@ The project follows NestJS 12's prerelease Standard Schema API. Changes should k
 
 ## Prerequisites
 
-- Node.js 20.19 or newer within Node 20, or Node.js 22.12 or newer
+- Node.js 22.12 or newer
 - Corepack
 - Git
 
@@ -23,17 +23,47 @@ corepack enable
 3. Install the exact locked dependencies:
 
    ```sh
-   yarn install --immutable
+   pnpm install --frozen-lockfile
    ```
 
 4. Make your change and add or update tests.
 5. Run the project checks:
 
    ```sh
-   yarn check
+   pnpm run check
+   pnpm run test
+   pnpm run verify:pack
    ```
 
-The combined check covers formatting, linting, type-checking, unit tests, end-to-end tests, and the production build.
+These commands cover formatting, linting, type-checking, unit and end-to-end tests, the production build, and the published package surface.
+
+6. Add a Changeset for user-visible changes:
+
+   ```sh
+   pnpm changeset
+   ```
+
+Changesets on `main` create or update the release pull request. Merging that release pull request publishes through npm Trusted Publishing, creates the package tag, and creates the GitHub release.
+
+## One-time npm bootstrap
+
+npm only lets maintainers configure a trusted publisher after the package exists. The first prerelease must therefore be published interactively from a clean checkout of `main`:
+
+```sh
+npm publish --access public --tag alpha
+```
+
+Complete npm's browser or two-factor authentication flow locally; never add an npm token to this repository. Then bind the package to the release workflow:
+
+```sh
+npm trust github @nestm/nestjs-standard-schema \
+  --file release.yml \
+  --repository nestm-dev/nestjs-standard-schema \
+  --environment release \
+  --allow-publish
+```
+
+After that one-time setup, merge the Changesets release pull request to let GitHub Actions publish the next alpha through OIDC with provenance.
 
 ## Design guidelines
 

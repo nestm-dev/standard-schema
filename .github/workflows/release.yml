@@ -1,0 +1,62 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+concurrency: release-${{ github.ref }}
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    # The npm trusted publisher must be bound to this environment.
+    environment: release
+    steps:
+      - uses: actions/checkout@v5
+        with: { fetch-depth: 0 }
+      - uses: pnpm/action-setup@v4
+      # Do not set `registry-url`: it writes an _authToken line to .npmrc,
+      # which defeats npm trusted publishing over OIDC.
+      - uses: actions/setup-node@v5
+        with: { node-version: 24, cache: pnpm }
+      # `changeset publish` delegates to pnpm. Native OIDC publishing requires
+      # pnpm >= 11.11; packageManager currently pins 11.18.0.
+      - name: Assert pnpm supports native OIDC publishing
+        run: |
+          node -e '
+            const [major, minor] = require("child_process")
+              .execSync("pnpm --version").toString().trim().split(".").map(Number);
+            if (major < 11 || (major === 11 && minor < 11)) {
+              throw new Error("pnpm >= 11.11 required for OIDC trusted publishing");
+            }
+          '
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run check
+      - run: pnpm run test
+      - name: Create release PR or publish to npm
+        id: changesets
+        uses: changesets/action@v1
+        with:
+          publish: pnpm run release
+          version: pnpm changeset version
+          title: 'chore: release @nestm/nestjs-standard-schema'
+          commit: 'chore: release @nestm/nestjs-standard-schema'
+          createGithubReleases: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Changesets pushes tags only after a successful npm publish. Reconcile
+      # the tag if a run is interrupted after npm accepts the package.
+      - name: Reconcile git tag with npm
+        if: always()
+        run: |
+          VERSION=$(node -p "require('./package.json').version")
+          TAG="@nestm/nestjs-standard-schema@$VERSION"
+          if npm view "@nestm/nestjs-standard-schema@$VERSION" version > /dev/null 2>&1; then
+            git tag "$TAG" 2> /dev/null && git push origin "$TAG" || true
+          fi
