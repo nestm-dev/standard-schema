@@ -1,8 +1,6 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-export const STANDARD_SCHEMA_DTO = Symbol.for(
-  '@nestm/nestjs-standard-schema/dto',
-);
+export const STANDARD_SCHEMA_DTO = Symbol.for('@nestm/standard-schema/dto');
 
 /**
  * Runtime class created by `createStandardSchemaDto`.

@@ -12,7 +12,7 @@ Please do not disclose a suspected vulnerability in a public issue, discussion, 
 
 Use the repository's private **Report a vulnerability** flow when it is available:
 
-<https://github.com/nestm-dev/nestjs-standard-schema/security/advisories/new>
+<https://github.com/nestm-dev/standard-schema/security/advisories/new>
 
 If private vulnerability reporting is not available, contact a repository maintainer through a private channel listed on their GitHub profile before sending sensitive details.
 

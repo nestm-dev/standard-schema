@@ -1,4 +1,4 @@
-# @nestm/nestjs-standard-schema
+# @nestm/standard-schema
 
 All notable changes to this project will be documented in this file.
 
