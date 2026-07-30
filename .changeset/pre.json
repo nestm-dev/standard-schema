@@ -5,6 +5,7 @@
     "@nestm/standard-schema": "0.1.0-alpha.0"
   },
   "changesets": [
+    "fix-alpha-publish",
     "initial-release"
   ]
 }
