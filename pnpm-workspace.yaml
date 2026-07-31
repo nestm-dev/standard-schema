@@ -1,5 +1,6 @@
 packages:
   - '.'
+  - 'examples/*'
 
 # Nest 12.0.0-alpha.* still declares ^11.0.0 peers on its own siblings.
 peerDependencyRules:

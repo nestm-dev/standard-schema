@@ -4,6 +4,8 @@
     "moduleResolution": "NodeNext",
     "target": "ES2023",
     "lib": ["ES2023"],
+    "rootDir": "./src",
+    "outDir": "./dist",
     "resolvePackageJsonExports": true,
     "resolvePackageJsonImports": true,
     "esModuleInterop": true,
@@ -11,30 +13,14 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "declaration": true,
-    "declarationMap": true,
-    "removeComments": false,
     "emitDecoratorMetadata": true,
     "experimentalDecorators": true,
-    "sourceMap": true,
-    "inlineSources": true,
-    "outDir": "./dist",
     "skipLibCheck": true,
     "strict": true,
     "exactOptionalPropertyTypes": true,
-    "noImplicitOverride": true,
     "noUncheckedIndexedAccess": true,
-    "noUnusedLocals": true,
-    "noUnusedParameters": true,
-    "forceConsistentCasingInFileNames": true,
-    "types": ["vitest/globals", "node"]
+    "types": ["node"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.cts",
-    "test/**/*.ts",
-    "vitest.config.ts",
-    "vitest.config.e2e.ts",
-    "vitest.config.plugin.ts"
-  ],
-  "exclude": ["node_modules", "dist", "coverage"]
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "dist", "dist-no-plugin"]
 }

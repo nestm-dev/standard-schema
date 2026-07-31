@@ -35,7 +35,9 @@ corepack enable
    pnpm run verify:pack
    ```
 
-These commands cover formatting, linting, type-checking, unit and end-to-end tests, the production build, and the published package surface.
+These commands cover formatting, linting, type-checking, unit,
+compiler-plugin, end-to-end, and example-backed packed-consumer tests, the
+production build, and the published package surface.
 
 6. Add a Changeset for user-visible changes:
 
@@ -70,8 +72,12 @@ After that one-time setup, merge the Changesets release pull request to let GitH
 - Preserve the native integration boundary: DTO metadata may select a schema, but Nest's native validation pipe and serializer should parse values.
 - Keep public APIs compatible with any implementation of Standard Schema.
 - Do not add a runtime dependency on Zod for core behavior. Zod can be used in examples and tests.
-- Use concrete runtime DTO classes where reflection is required. Do not imply that TypeScript aliases, interfaces, `Promise<T>`, or array item types are available at runtime.
-- Keep controller ergonomics predictable. Prefer explicit response schema metadata over inference that fails for common async or list handlers.
+- Keep request DTOs output-oriented: controller parameters receive `StandardSchemaV1.InferOutput<Schema>`.
+- Keep response DTOs input-oriented: handlers return `StandardSchemaV1.InferInput<Schema>`, and clients receive `StandardSchemaV1.InferOutput<Schema>`.
+- Use concrete runtime DTO classes where reflection is required. Runtime request discovery cannot recover aliases or interfaces.
+- Keep response inference build-time and opt-in. It may unwrap supported `Promise` and array annotations only when the TypeScript compiler plugin has a concrete response-branded DTO.
+- Let explicit `@StandardSchemaResponse(...)` or `@SerializeOptions(...)` metadata win. Ambiguous response DTO contracts should fail by default or honor the configured skip behavior.
+- Keep the CommonJS compiler entry isolated from the ESM runtime entry. Runtime users should not load TypeScript merely by importing the package.
 - Include `.js` suffixes for local imports in TypeScript source compiled as Node ESM.
 
 ## Tests
@@ -80,14 +86,36 @@ Tests should cover both type-level ergonomics and runtime behavior where applica
 
 - parsed request values reaching the controller;
 - coercions, defaults, and transforms;
+- response handler input types and serialized client output types;
 - `@Body()`, `@Query()`, and `@Param()` DTO discovery;
 - explicit native parameter schemas continuing to work;
 - object and array response serialization;
 - controller-level and method-level response schemas;
+- compiler output for direct, async, and list return annotations;
+- unchanged declaration output and useful ambiguity diagnostics;
+- type-only imports, aliases, identifier collisions, custom controller suffixes, and transformer idempotence;
+- explicit response metadata overriding compiler inference;
+- the public example resolving the packed CommonJS plugin and building through
+  the Nest CLI `tsc` builder;
 - invalid input producing a client validation error; and
 - invalid service output remaining a server contract error.
 
 Keep tests isolated and deterministic. A test should not depend on execution order or shared mutable state.
+
+Run a focused suite while developing, then run the full checks before opening a pull request:
+
+```sh
+pnpm run test:unit
+pnpm run test:plugin
+pnpm run test:e2e
+pnpm run example:test
+```
+
+`test:plugin` runs transformer tests against built output. `example:test`
+installs the actual tarball into an isolated copy of
+[`examples/nest-cli-zod`](./examples/nest-cli-zod) and verifies both
+plugin-enabled and plugin-disabled builds. `test:packed` remains an alias for
+that command. The aggregate `pnpm run test` command runs all four suites.
 
 ## Pull requests
 
