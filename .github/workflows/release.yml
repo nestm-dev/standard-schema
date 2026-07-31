@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
         with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
       # Do not set `registry-url`: it writes an _authToken line to .npmrc,
       # which defeats npm trusted publishing over OIDC.
       - uses: actions/setup-node@v5
