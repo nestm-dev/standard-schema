@@ -1,5 +1,11 @@
 # @nestm/standard-schema
 
+## 0.1.0-alpha.4
+
+### Patch Changes
+
+- f0b9efc: Add response-input DTO typing, an opt-in Nest CLI compiler plugin that infers native Standard Schema response metadata from explicit controller return types, and a runnable Nest CLI/Zod example that is verified against the packed package.
+
 ## 0.1.0-alpha.3
 
 ### Patch Changes

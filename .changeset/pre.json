@@ -2,11 +2,13 @@
   "mode": "pre",
   "tag": "alpha",
   "initialVersions": {
-    "@nestm/standard-schema": "0.1.0-alpha.0"
+    "@nestm/standard-schema": "0.1.0-alpha.0",
+    "@nestm/example-nest-cli-zod": "0.0.0"
   },
   "changesets": [
     "document-alpha-install",
     "fix-alpha-publish",
+    "infer-native-responses",
     "initial-release"
   ]
 }
