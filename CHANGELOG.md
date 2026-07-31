@@ -1,5 +1,14 @@
 # @nestm/standard-schema
 
+## 0.1.0-alpha.5
+
+### Patch Changes
+
+- Add the optional Swagger response decorator and compiler `swagger` mode for
+  native request schemas, serialized response contracts, success statuses, array
+  shape (including custom Swagger converters), complete response example
+  metadata, explicit-metadata precedence, and build-time ambiguity diagnostics.
+
 ## 0.1.0-alpha.4
 
 ### Patch Changes

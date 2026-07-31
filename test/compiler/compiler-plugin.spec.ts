@@ -29,6 +29,10 @@ export class RequestDto extends createStandardSchemaDto(
   z.object({ name: z.string() }),
 ) {}
 
+export class OtherRequestDto extends createStandardSchemaDto(
+  z.object({ id: z.coerce.number() }),
+) {}
+
 export interface UnusedType {
   readonly ignored: true;
 }
@@ -881,6 +885,345 @@ export class ProductsController {
     expect(javascript).not.toContain('StandardSchemaResponse(FakeResponseDto)');
   });
 
+  it('adds native request schemas and enriches existing Swagger success descriptions', () => {
+    const result = compileFixture(
+      {
+        'product.dto.ts': responseDtoSource,
+        'products.controller.ts': `
+import {
+  Body as Payload,
+  Controller as ApiController,
+  Get as Read,
+  HttpCode,
+  HttpStatus,
+  Param as RouteParams,
+  Post as Create,
+  Query as Search,
+} from '@nestjs/common';
+import {
+  ApiCreatedResponse,
+  ApiOkResponse,
+  ApiResponse,
+} from '@nestjs/swagger';
+import type {
+  OtherRequestDto,
+  ProductResponseDto,
+  RequestDto,
+} from './product.dto.js';
+
+@ApiController('products')
+export class ProductsController {
+  @Create()
+  @ApiCreatedResponse({ description: 'Product created.' })
+  create(@Payload() body: RequestDto): ProductResponseDto {
+    return { id: 1, name: body.name, publishedAt: new Date() };
+  }
+
+  @Read()
+  @ApiOkResponse({ description: 'Products listed.' })
+  findAll(@Search() query: OtherRequestDto): ProductResponseDto[] {
+    return query.id === undefined ? [] : [];
+  }
+
+  @Read(':id')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiResponse({
+    status: HttpStatus.ACCEPTED,
+    description: 'Product accepted.',
+  })
+  findOne(@RouteParams() params: OtherRequestDto): ProductResponseDto {
+    return { id: params.id, name: 'Product', publishedAt: new Date() };
+  }
+}
+`,
+      },
+      {
+        pluginOptions: {
+          swagger: true,
+        },
+      },
+    );
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+    expect(javascript).toMatch(
+      /Payload\(\{\s*schema: RequestDto\.schema\s*\}\)/,
+    );
+    expect(javascript).toMatch(
+      /Search\(\{\s*schema: OtherRequestDto\.schema\s*\}\)/,
+    );
+    expect(javascript).toMatch(
+      /RouteParams\(\{\s*schema: OtherRequestDto\.schema\s*\}\)/,
+    );
+    expect(javascript).toContain(
+      "ApiCreatedResponse({ description: 'Product created.' })",
+    );
+    expect(javascript).toContain(
+      "ApiOkResponse({ description: 'Products listed.' })",
+    );
+    expect(javascript).toMatch(
+      /ApiResponse\(\{\s*status: HttpStatus\.ACCEPTED,\s*description: ['"]Product accepted\.['"],?\s*\}\)/,
+    );
+    expect(
+      countOccurrences(
+        javascript,
+        '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto',
+      ),
+    ).toBe(3);
+    expect(javascript).toMatch(
+      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 201\s*\}\)/,
+    );
+    expect(javascript).toMatch(
+      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 200,\s*isArray: true\s*\}\)/,
+    );
+    expect(javascript).toMatch(
+      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 202\s*\}\)/,
+    );
+  });
+
+  it('injects the composite Swagger decorator with Nest default statuses and array shape', () => {
+    const result = compileFixture(
+      {
+        'product.dto.ts': responseDtoSource,
+        'products.controller.ts': `
+import {
+  Controller,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Post,
+  RequestMapping,
+  RequestMethod,
+} from '@nestjs/common';
+import { ApiDefaultResponse } from '@nestjs/swagger';
+import type { ProductResponseDto } from './product.dto.js';
+
+@Controller('products')
+export class ProductsController {
+  @Post()
+  create(): ProductResponseDto {
+    return { id: 1, name: 'Created', publishedAt: new Date() };
+  }
+
+  @RequestMapping({ method: RequestMethod.POST, path: 'mapped' })
+  mappedPost(): ProductResponseDto {
+    return { id: 4, name: 'Mapped', publishedAt: new Date() };
+  }
+
+  @Get()
+  findAll(): Promise<readonly ProductResponseDto[]> {
+    return Promise.resolve([]);
+  }
+
+  @Get('accepted')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @ApiDefaultResponse({ description: 'Unexpected failure.' })
+  accepted(): ProductResponseDto {
+    return { id: 2, name: 'Accepted', publishedAt: new Date() };
+  }
+}
+`,
+      },
+      {
+        pluginOptions: {
+          swagger: true,
+        },
+      },
+    );
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+    expect(javascript).toContain(
+      'import * as _nestmStandardSchemaSwagger from "@nestm/standard-schema/swagger";',
+    );
+    expect(javascript).toMatch(
+      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 201\s*\}\)/,
+    );
+    expect(
+      countOccurrences(
+        javascript,
+        'ApiStandardSchemaResponse(ProductResponseDto, { status: 201 })',
+      ),
+    ).toBe(2);
+    expect(javascript).toMatch(
+      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 200,\s*isArray: true\s*\}\)/,
+    );
+    expect(javascript).toMatch(
+      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 202\s*\}\)/,
+    );
+    expect(javascript).toContain(
+      "ApiDefaultResponse({ description: 'Unexpected failure.' })",
+    );
+    expect(javascript).not.toContain(
+      '_nestmStandardSchema.StandardSchemaResponse',
+    );
+  });
+
+  it('preserves explicit request, serialization, composite, and Swagger schemas', () => {
+    const result = compileFixture(
+      {
+        'product.dto.ts': responseDtoSource,
+        'products.controller.ts': `
+import {
+  Body,
+  Controller,
+  Get,
+  SerializeOptions,
+} from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
+import { ApiStandardSchemaResponse } from '@nestm/standard-schema/swagger';
+import {
+  OtherProductResponseDto,
+  ProductResponseDto,
+  RequestDto,
+} from './product.dto.js';
+
+@Controller('products')
+export class ProductsController {
+  @Get('request')
+  explicitRequest(
+    @Body({ schema: RequestDto.schema }) body: RequestDto,
+  ): string {
+    return body.name;
+  }
+
+  @Get('native')
+  @SerializeOptions({ schema: ProductResponseDto.schema })
+  native(): ProductResponseDto {
+    return { id: 1, name: 'Native', publishedAt: new Date() };
+  }
+
+  @Get('swagger-schema')
+  @ApiOkResponse({
+    description: 'Explicit schema.',
+    schema: { type: 'string' },
+  })
+  swaggerSchema(): ProductResponseDto {
+    return { id: 2, name: 'Swagger', publishedAt: new Date() };
+  }
+
+  @Get('composite')
+  @ApiStandardSchemaResponse(ProductResponseDto, {
+    description: 'Explicit composite.',
+    status: 200,
+  })
+  composite(): ProductResponseDto | OtherProductResponseDto {
+    return { id: 3, name: 'Composite', publishedAt: new Date() };
+  }
+}
+`,
+      },
+      {
+        pluginOptions: {
+          swagger: true,
+        },
+      },
+    );
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+    expect(countOccurrences(javascript, 'schema: RequestDto.schema')).toBe(1);
+    expect(javascript).toMatch(
+      /ApiOkResponse\(\{\s*description: ['"]Explicit schema\.['"],\s*schema: \{ type: ['"]string['"] \},?\s*\}\)/,
+    );
+    expect(
+      countOccurrences(
+        javascript,
+        '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+      ),
+    ).toBe(1);
+    expect(
+      countOccurrences(
+        javascript,
+        'ApiStandardSchemaResponse(ProductResponseDto',
+      ),
+    ).toBe(1);
+  });
+
+  it.each([
+    {
+      name: 'property-bound parameter',
+      parameter: "@Param('id') input: RequestDto",
+      reason: 'property-bound request decorators',
+    },
+    {
+      name: 'request union',
+      parameter: '@Body() input: RequestDto | OtherRequestDto',
+      reason: 'request unions, wrappers, tuples, and arrays',
+    },
+    {
+      name: 'request wrapper',
+      parameter: '@Query() input: Array<RequestDto>',
+      reason: 'request unions, wrappers, tuples, and arrays',
+    },
+    {
+      name: 'nested request array',
+      parameter: '@Body() input: RequestDto[][]',
+      reason: 'request unions, wrappers, tuples, and arrays',
+    },
+  ])(
+    'fails before emit for an ambiguous $name contract with Swagger inference',
+    ({ parameter, reason }) => {
+      expect(() =>
+        compileFixture(
+          {
+            'product.dto.ts': responseDtoSource,
+            'products.controller.ts': `
+import { Body, Controller, Param, Post, Query } from '@nestjs/common';
+import type {
+  OtherRequestDto,
+  RequestDto,
+} from './product.dto.js';
+
+@Controller('products')
+export class ProductsController {
+  @Post()
+  create(${parameter}): string {
+    return 'ok';
+  }
+}
+`,
+          },
+          {
+            pluginOptions: {
+              swagger: true,
+            },
+          },
+        ),
+      ).toThrow(reason);
+    },
+  );
+
+  it('fails before emit when a Standard Schema response status is unresolved', () => {
+    expect(() =>
+      compileFixture(
+        {
+          'product.dto.ts': responseDtoSource,
+          'products.controller.ts': `
+import { Controller, Get, HttpCode } from '@nestjs/common';
+import type { ProductResponseDto } from './product.dto.js';
+
+declare function resolveStatus(): number;
+
+@Controller('products')
+export class ProductsController {
+  @Get()
+  @HttpCode(resolveStatus())
+  find(): ProductResponseDto {
+    return { id: 1, name: 'Product', publishedAt: new Date() };
+  }
+}
+`,
+        },
+        {
+          pluginOptions: {
+            swagger: true,
+          },
+        },
+      ),
+    ).toThrow('response status from @HttpCode cannot be resolved statically');
+  });
+
   it('can skip ambiguous contracts when explicitly configured', () => {
     const result = compileFixture(
       {
@@ -955,9 +1298,23 @@ export class ProductsController {
     };
     const once = compileFixture(files);
     const twice = compileFixture(files, { transformerPasses: 2 });
+    const onceWithSwagger = compileFixture(files, {
+      pluginOptions: {
+        swagger: true,
+      },
+    });
+    const twiceWithSwagger = compileFixture(files, {
+      pluginOptions: {
+        swagger: true,
+      },
+      transformerPasses: 2,
+    });
 
     expect(getOutput(twice.emitted, 'products.controller.js')).toBe(
       getOutput(once.emitted, 'products.controller.js'),
+    );
+    expect(getOutput(twiceWithSwagger.emitted, 'products.controller.js')).toBe(
+      getOutput(onceWithSwagger.emitted, 'products.controller.js'),
     );
   });
 
@@ -975,6 +1332,9 @@ export class ProductsController {
     );
     expect(() => loaded.before({ controllerFileNameSuffix: [] })).toThrow(
       'must be a non-empty string array',
+    );
+    expect(() => loaded.before({ swagger: 'yes' })).toThrow(
+      'option "swagger" must be a boolean',
     );
   });
 });

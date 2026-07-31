@@ -4,6 +4,7 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 import { Test } from '@nestjs/testing';
+import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import request from 'supertest';
 
 const outputDirectory = process.env['EXAMPLE_OUTPUT_DIRECTORY'] ?? 'dist';
@@ -21,6 +22,10 @@ assert.equal(typeof plugin.before, 'function');
 
 try {
   await verifyApplication(app);
+
+  if (pluginEnabled) {
+    verifyOpenApiDocument(app);
+  }
 } finally {
   await app.close();
   await testingModule.close();
@@ -118,6 +123,40 @@ async function verifyApplication(application) {
     .get('/products/not-a-number')
     .expect(400);
   await request(application.getHttpServer()).get('/products/999').expect(404);
+}
+
+function verifyOpenApiDocument(application) {
+  const document = SwaggerModule.createDocument(
+    application,
+    new DocumentBuilder()
+      .setTitle('Packed Standard Schema consumer')
+      .setVersion('1')
+      .build(),
+  );
+  const createOperation = document.paths['/products']?.post;
+  const listOperation = document.paths['/products']?.get;
+  const createRequestSchema =
+    createOperation?.requestBody?.content?.['application/json']?.schema;
+  const createResponse = createOperation?.responses?.['201'];
+  const createResponseSchema =
+    createResponse?.content?.['application/json']?.schema;
+  const listResponseSchema =
+    listOperation?.responses?.['200']?.content?.['application/json']?.schema;
+
+  assert.equal(createRequestSchema?.type, 'object');
+  assert.equal(createRequestSchema?.properties?.price?.type, 'number');
+  assert.equal(createResponse?.description, 'Product created.');
+  assert.equal(createResponseSchema?.type, 'object');
+  assert.equal(
+    createResponseSchema?.properties?.createdAt?.format,
+    'date-time',
+  );
+  assert.equal(
+    listOperation?.responses?.['200']?.description,
+    'Products returned.',
+  );
+  assert.equal(listResponseSchema?.type, 'array');
+  assert.equal(listResponseSchema?.items?.type, 'object');
 }
 
 async function createTestingApp(productsService) {

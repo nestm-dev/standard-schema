@@ -1,5 +1,13 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import { StandardSchemaResponse } from '@nestm/standard-schema';
+import {
+  Body as Payload,
+  Controller as ApiController,
+  Get as Read,
+  Param as RouteParams,
+  Post as Create,
+  Query as Search,
+} from '@nestjs/common';
+import { ApiCreatedResponse, ApiOkResponse } from '@nestjs/swagger';
+import { ApiStandardSchemaResponse } from '@nestm/standard-schema/swagger';
 
 import {
   CreateProductDto,
@@ -10,31 +18,37 @@ import {
 } from './product.dto.js';
 import { ProductsService } from './products.service.js';
 
-@Controller('products')
+@ApiController('products')
 export class ProductsController {
   constructor(private readonly productsService: ProductsService) {}
 
-  @Post()
-  create(@Body() input: CreateProductDto): ProductResponseDto {
+  @Create()
+  @ApiCreatedResponse({ description: 'Product created.' })
+  create(@Payload() input: CreateProductDto): ProductResponseDto {
     return this.productsService.create(input);
   }
 
-  @Get()
+  @Read()
+  @ApiOkResponse({ description: 'Products returned.' })
   async findAll(
-    @Query() query: ListProductsQueryDto,
+    @Search() query: ListProductsQueryDto,
   ): Promise<ProductResponseDto[]> {
     return this.productsService.findAll(query);
   }
 
-  @Get('summary')
-  @StandardSchemaResponse(ProductSummaryResponseDto)
+  @Read('summary')
+  @ApiStandardSchemaResponse(ProductSummaryResponseDto, {
+    description: 'Product summary returned.',
+    status: 200,
+  })
   getSummary(): ProductSummaryResponseDto | ProductResponseDto {
     return this.productsService.getSummary();
   }
 
-  @Get(':id')
+  @Read(':id')
+  @ApiOkResponse({ description: 'Product returned.' })
   async findOne(
-    @Param() params: ProductParamsDto,
+    @RouteParams() params: ProductParamsDto,
   ): Promise<ProductResponseDto> {
     return this.productsService.findOne(params.id);
   }

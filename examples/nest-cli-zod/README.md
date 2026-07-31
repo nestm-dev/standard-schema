@@ -3,11 +3,13 @@
 This application demonstrates the real consumer experience for
 `@nestm/standard-schema`:
 
-- request DTO classes discovered by Nest from `@Body()`, `@Query()`, and
-  `@Param()`;
+- native request schema metadata inferred from aliased `@Body()`, `@Query()`,
+  and `@Param()` decorators;
 - Zod coercion, trimming, defaults, and unknown-key stripping;
 - response metadata inferred from controller return annotations by the Nest CLI
   compiler plugin;
+- preserved `@nestjs/swagger` success descriptions and generated request,
+  object-response, and array-response OpenAPI schemas;
 - object and array responses serialized by Nest's native Standard Schema
   interceptor; and
 - controllers that delegate application behavior to a singleton service.
@@ -22,9 +24,9 @@ findAll(@Query() query: ListProductsQueryDto): ProductResponseDto[] {
 ```
 
 The `/products/summary` route also demonstrates the explicit
-`@StandardSchemaResponse(...)` escape hatch for a return type that is
-intentionally ambiguous. The explicit schema is honored with and without the
-compiler plugin.
+`@ApiStandardSchemaResponse(...)` escape hatch for a return type that is
+intentionally ambiguous. The explicit runtime and Swagger schema is honored
+with and without the compiler plugin.
 
 ## Run from this repository
 
@@ -48,9 +50,11 @@ pnpm run example:test
 
 That command packs the library, copies this example to a temporary directory,
 installs the tarball as a real dependency, builds it through the Nest CLI
-`tsc` builder, and runs its HTTP smoke test. It also performs a second build
-without the plugin to prove that request DTO discovery remains independent
-while automatic response serialization is opt-in.
+`tsc` builder, runs its HTTP and OpenAPI smoke tests, proves transforms and
+array responses at the artifact boundary, and verifies that an ambiguous
+response union fails the packed consumer build. It also performs a second
+build without the plugin to prove that request DTO discovery remains
+independent while automatic response serialization is opt-in.
 
 ## Try the API
 

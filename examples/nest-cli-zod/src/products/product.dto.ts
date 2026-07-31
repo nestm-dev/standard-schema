@@ -33,13 +33,18 @@ export class ProductParamsDto extends createStandardSchemaDto(
   ProductParamsSchema,
 ) {}
 
+const DateToIsoStringSchema = z.codec(z.date(), z.iso.datetime(), {
+  decode: (value) => value.toISOString(),
+  encode: (value) => new Date(value),
+});
+
 const ProductResponseSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
   price: z.number().nonnegative(),
   active: z.boolean(),
-  createdAt: z.date().transform((value) => value.toISOString()),
-  updatedAt: z.date().transform((value) => value.toISOString()),
+  createdAt: DateToIsoStringSchema,
+  updatedAt: DateToIsoStringSchema,
 });
 
 export class ProductResponseDto extends createStandardSchemaResponseDto(

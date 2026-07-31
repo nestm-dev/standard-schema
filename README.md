@@ -35,7 +35,10 @@ Responses can use the explicit runtime decorator:
 @StandardSchemaResponse(ProductResponseDto)
 ```
 
-Or an optional Nest CLI compiler plugin can inject the same metadata from an explicit response DTO return annotation:
+Or an optional Nest CLI compiler plugin can inject the same metadata from an
+explicit response DTO return annotation. With `swagger: true`, it also attaches
+native request schema metadata and Standard Schema response metadata understood
+by `@nestjs/swagger`:
 
 ```ts
 async findAll(): Promise<ProductResponseDto[]> {
@@ -59,6 +62,14 @@ For the Zod examples:
 
 ```sh
 pnpm add zod@4.4.3
+```
+
+OpenAPI integration is optional. Install the matching Nest Swagger prerelease
+only when using `@nestm/standard-schema/swagger` or compiler
+`"swagger": true`:
+
+```sh
+pnpm add @nestjs/swagger@12.0.0-alpha.2
 ```
 
 The commands show the NestJS prerelease used by this package's test suite. Pin the exact framework versions you test instead of leaving a floating prerelease tag in `package.json`.
@@ -127,7 +138,7 @@ export class AppModule {}
 
 `StandardSchemaModule.forRoot()` registers the DTO-aware validation pipe and Nest's native Standard Schema serializer globally. Import it once in the root application module.
 
-### 3. Enable automatic response metadata
+### 3. Enable automatic request, response, and OpenAPI metadata
 
 Add the optional plugin to `nest-cli.json`:
 
@@ -141,7 +152,8 @@ Add the optional plugin to `nest-cli.json`:
         "name": "@nestm/standard-schema",
         "options": {
           "controllerFileNameSuffix": [".controller.ts", ".controller.mts"],
-          "onAmbiguous": "error"
+          "onAmbiguous": "error",
+          "swagger": true
         }
       }
     ]
@@ -149,7 +161,11 @@ Add the optional plugin to `nest-cli.json`:
 }
 ```
 
-The suffixes shown above and `onAmbiguous: "error"` are the defaults. The package exposes a CommonJS `@nestm/standard-schema/plugin` entry because the Nest CLI loads compiler plugins synchronously; application code does not import that entry.
+The suffixes shown above and `onAmbiguous: "error"` are the defaults.
+`swagger` defaults to `false`, preserving response-only compiler behavior
+without an `@nestjs/swagger` dependency. The package exposes a CommonJS
+`@nestm/standard-schema/plugin` entry because the Nest CLI loads compiler
+plugins synchronously; application code does not import that entry.
 
 ### 4. Use normal Nest decorators
 
@@ -190,7 +206,11 @@ export class ProductsController {
 }
 ```
 
-The plugin injects the equivalent of `@StandardSchemaResponse(ProductResponseDto)` into the emitted JavaScript. No response decorator is needed for these supported return signatures.
+The plugin injects native `{ schema: Dto.schema }` options into zero-argument,
+whole-object `@Body()`, `@Query()`, and `@Param()` decorators. It also injects
+the equivalent of `@ApiStandardSchemaResponse(ProductResponseDto, ...)` for
+supported response signatures, including the standard Nest status (`POST` is
+201; other routes are 200) and one array layer.
 
 The plugin is optional. Without it, or when a route needs a contract that cannot be inferred, keep the explicit decorator:
 
@@ -202,14 +222,54 @@ summary(): ProductSummaryResponseDto {
 }
 ```
 
-Explicit `@StandardSchemaResponse(...)` and Nest `@SerializeOptions(...)` metadata always win, whether placed on the method or controller. DTO classes and raw Standard Schema objects are accepted by `@StandardSchemaResponse(...)`.
+Explicit `@StandardSchemaResponse(...)`,
+`@ApiStandardSchemaResponse(...)`, and Nest `@SerializeOptions(...)` metadata
+always win, whether placed on the method or controller. DTO classes and raw
+Standard Schema objects are accepted by the explicit decorators.
+
+When Swagger is installed, the composite decorator is also available from its
+optional subpath:
+
+```ts
+import { ApiStandardSchemaResponse } from '@nestm/standard-schema/swagger';
+
+@Get('summary')
+@ApiStandardSchemaResponse(ProductSummaryResponseDto, {
+  description: 'Product summary returned.',
+  status: 200,
+})
+summary(): ProductSummaryResponseDto {
+  return this.products.summary();
+}
+```
+
+It combines native runtime serialization with `@nestjs/swagger`
+`standardSchema` metadata. `isArray: true` produces an array OpenAPI schema
+directly for Standard Schema implementations that expose the Standard JSON
+Schema converter.
+
+Nest Swagger 12 alpha.2 does not apply `isArray` after a custom
+`standardSchemaConverter`. Wrap that converter once when creating the document
+so converter-only schemas retain their response array shape and components:
+
+```ts
+import { SwaggerModule } from '@nestjs/swagger';
+import { withStandardSchemaResponseArrays } from '@nestm/standard-schema/swagger';
+
+const document = SwaggerModule.createDocument(app, config, {
+  standardSchemaConverter: withStandardSchemaResponseArrays(
+    standardSchemaConverter,
+  ),
+});
+```
 
 ## Runnable example
 
 The complete [Nest CLI + Zod products API](./examples/nest-cli-zod) uses the
 same request DTO discovery and compiler-inferred response metadata as a real
 consumer. It includes `@Body()`, `@Query()`, and `@Param()` parsing, an
-in-memory service, object and array responses, and an HTTP smoke test.
+in-memory service, object and array responses, and HTTP plus OpenAPI smoke
+tests.
 
 From this repository:
 
@@ -234,9 +294,13 @@ copy of the example, builds through Nest's CLI, and exercises the HTTP API.
 ### Requests
 
 1. TypeScript emits the concrete DTO class as Nest parameter metadata.
-2. `StandardSchemaDtoValidationPipe` reads the Standard Schema stored on that class.
-3. The pipe passes the value and schema to Nest's native `StandardSchemaValidationPipe`.
-4. The controller receives the parsed output, including schema-defined coercions, transforms, defaults, and key handling.
+2. With compiler `swagger: true`, zero-argument whole-object request decorators
+   are emitted with native `{ schema: Dto.schema }` metadata.
+3. Otherwise, `StandardSchemaDtoValidationPipe` discovers the schema stored on
+   the reflected DTO class.
+4. Nest's native `StandardSchemaValidationPipe` parses the value exactly once.
+5. The controller receives the parsed output, including schema-defined
+   coercions, transforms, defaults, and key handling.
 
 Automatic discovery requires the normal Nest TypeScript decorator metadata options, including `experimentalDecorators` and `emitDecoratorMetadata`.
 
@@ -253,7 +317,13 @@ create(
 
 ### Responses
 
-At build time, the optional compiler plugin finds concrete `@Controller()` route methods with explicit return annotations. When the final type is a class created by `createStandardSchemaResponseDto(...)`, it injects `@StandardSchemaResponse(ResponseDto)` into the emitted JavaScript without changing declaration output.
+At build time, the optional compiler plugin finds concrete `@Controller()`
+route methods with explicit return annotations. When the final type is a class
+created by `createStandardSchemaResponseDto(...)`, it injects runtime response
+serialization without changing declaration output. In Swagger mode, it also
+adds the success status, output Standard Schema, and array shape. Existing
+success `@Api*Response({ description })` metadata is merged rather than
+discarded.
 
 At runtime, `@StandardSchemaResponse(...)` resolves the class to its schema and composes Nest's native `@SerializeOptions({ schema })` metadata. The serializer registered by `StandardSchemaModule` validates and parses object responses, and applies the item schema to array responses.
 
@@ -285,6 +355,19 @@ The plugin also skips:
   `{ passthrough: true }` remains eligible); and
 - routes already covered by method- or controller-level `@StandardSchemaResponse(...)` or `@SerializeOptions(...)`.
 
+With `"swagger": true`, request inference supports a concrete
+`createStandardSchemaDto(...)` subclass on zero-argument whole-object
+`@Body()`, `@Query()`, or `@Param()`. A direct type-only import is promoted to a
+runtime import when its export chain is safe. Native decorator options that
+already contain `schema` win.
+
+Property-bound request DTO decorators, DTO unions, generic wrappers, tuples,
+arrays of request DTOs, nested response arrays, and statically unresolved
+`@HttpCode(...)` values are ambiguous. Under the default
+`"onAmbiguous": "error"` they stop the build with an explicit-decorator
+escape hatch. Primitives, streams, raw responses, and 204 routes remain
+untouched.
+
 By default, response DTO contracts that are visible but unsafe to reduce to one schema stop the build with guidance to add explicit metadata. This includes unions, intersections, tuples, nested arrays, unresolved generics, structural envelopes such as `Page<ProductResponseDto>`, and DTOs that cannot be referenced safely at runtime. Prefer one concrete response DTO backed by a union or envelope schema:
 
 ```ts
@@ -297,7 +380,10 @@ To leave ambiguous routes untouched instead, set `"onAmbiguous": "skip"` in the 
 
 ### Compiler compatibility
 
-Automatic response metadata currently requires `nest build` with the Nest CLI `tsc` builder. Plain `tsc`, Vitest, ts-jest, SWC, webpack, and rspack do not automatically load this plugin. Use explicit response metadata when building through those paths.
+Automatic request/response metadata currently requires `nest build` with the
+Nest CLI `tsc` builder. Plain `tsc`, Vitest, ts-jest, SWC, webpack, and rspack
+do not automatically load this plugin. Use explicit metadata when building
+through those paths.
 
 The normal package entry is ESM. Only the compiler subpath is CommonJS for the Nest CLI loader, and it is isolated from the runtime entry so applications that do not enable the plugin do not load TypeScript. Continue using `.js` suffixes for local imports in NodeNext ESM source.
 
@@ -372,6 +458,24 @@ An optional second argument accepts `validateOptions`, which is passed through t
 })
 ```
 
+### `@nestm/standard-schema/swagger`
+
+The optional subpath exports
+`ApiStandardSchemaResponse(source, options)`. Its options combine
+`@nestjs/swagger` response metadata (`status`, `description`, `isArray`,
+examples, headers, and links) with the native serializer's
+`validateOptions`.
+
+It also exports
+`withStandardSchemaResponseArrays(standardSchemaConverter)`, which decorates a
+custom Nest Swagger converter with array-response handling while preserving the
+converter's component schemas. This wrapper is only needed for schemas that
+depend on the custom converter instead of exposing the Standard JSON Schema
+conversion protocol themselves.
+
+Importing this subpath requires the optional `@nestjs/swagger` peer. The root
+runtime entry and compiler-only entry do not load Swagger.
+
 ### `StandardSchemaModule.forRoot(options?)`
 
 Returns a Nest dynamic module that globally registers:
@@ -428,7 +532,10 @@ This package has a narrower purpose for NestJS 12: it makes runtime DTO classes 
 
 ## Current scope
 
-The package focuses on request DTO discovery and response schema metadata. It does not generate OpenAPI documents or define an application response envelope. Its compiler plugin only recognizes explicit, concrete response DTO annotations; it does not recover arbitrary schemas from erased interfaces, aliases, or structural types.
+The package focuses on request DTO discovery, response schema metadata, and an
+optional bridge to Nest Swagger's native Standard Schema support. It does not
+define an application response envelope or recover arbitrary schemas from
+erased interfaces, aliases, or structural types.
 
 ## Compatibility
 

@@ -9,6 +9,7 @@
     "document-alpha-install",
     "fix-alpha-publish",
     "infer-native-responses",
-    "initial-release"
+    "initial-release",
+    "swagger-native-metadata"
   ]
 }
