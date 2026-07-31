@@ -18,7 +18,7 @@ jobs:
     # The npm trusted publisher must be bound to this environment.
     environment: release
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
       - uses: pnpm/action-setup@v4
       # Do not set `registry-url`: it writes an _authToken line to .npmrc,
