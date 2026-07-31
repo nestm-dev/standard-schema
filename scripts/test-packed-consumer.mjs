@@ -1,9 +1,10 @@
-import { execFileSync } from 'node:child_process';
+import { execFileSync, spawnSync } from 'node:child_process';
 import {
   cpSync,
   mkdtempSync,
   readFileSync,
   rmSync,
+  unlinkSync,
   writeFileSync,
 } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -67,6 +68,7 @@ try {
     EXAMPLE_OUTPUT_DIRECTORY: 'dist-no-plugin',
     EXAMPLE_PLUGIN_ENABLED: 'false',
   });
+  verifyPackedAmbiguity(consumerRoot);
 } finally {
   rmSync(temporaryRoot, { force: true, recursive: true });
 }
@@ -135,9 +137,35 @@ function assertCompilerOutput(root) {
   );
 
   if (
-    !pluginJavaScript.includes('StandardSchemaResponse(ProductResponseDto)')
+    !pluginJavaScript.includes('ApiStandardSchemaResponse(ProductResponseDto')
   ) {
-    throw new Error('Nest CLI build did not inject response schema metadata.');
+    throw new Error(
+      'Nest CLI build did not inject response and Swagger schema metadata.',
+    );
+  }
+
+  for (const expectedParameterMetadata of [
+    'Payload({ schema: CreateProductDto.schema })',
+    'Search({ schema: ListProductsQueryDto.schema })',
+    'RouteParams({ schema: ProductParamsDto.schema })',
+  ]) {
+    if (!pluginJavaScript.includes(expectedParameterMetadata)) {
+      throw new Error(
+        `Nest CLI build did not inject ${expectedParameterMetadata}.`,
+      );
+    }
+  }
+
+  for (const preservedDescription of [
+    "description: 'Product created.'",
+    "description: 'Products returned.'",
+    "description: 'Product returned.'",
+  ]) {
+    if (!pluginJavaScript.includes(preservedDescription)) {
+      throw new Error(
+        `Nest CLI build did not preserve ${preservedDescription}.`,
+      );
+    }
   }
 
   if (plainJavaScript.includes('_nestmStandardSchema')) {
@@ -148,6 +176,66 @@ function assertCompilerOutput(root) {
 
   if (pluginDeclaration !== plainDeclaration) {
     throw new Error('The compiler plugin changed declaration output.');
+  }
+}
+
+function verifyPackedAmbiguity(root) {
+  const fixturePath = join(root, 'src', 'products', 'ambiguous.controller.ts');
+
+  writeFileSync(
+    fixturePath,
+    `
+import { Controller, Get } from '@nestjs/common';
+import type {
+  ProductResponseDto,
+  ProductSummaryResponseDto,
+} from './product.dto.js';
+
+@Controller('ambiguous')
+export class AmbiguousController {
+  @Get()
+  find(): ProductResponseDto | ProductSummaryResponseDto {
+    throw new Error('not executed');
+  }
+}
+`,
+  );
+
+  try {
+    const result = spawnSync(
+      'pnpm',
+      [
+        'exec',
+        'nest',
+        'build',
+        '--config',
+        'nest-cli.json',
+        '--builder',
+        'tsc',
+      ],
+      {
+        cwd: root,
+        encoding: 'utf8',
+        env: process.env,
+      },
+    );
+    const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+    if (result.status === 0) {
+      throw new Error(
+        'Packed consumer unexpectedly compiled an ambiguous response union.',
+      );
+    }
+
+    if (
+      !output.includes('union response types require one concrete response DTO')
+    ) {
+      throw new Error(
+        `Packed consumer failed for an unexpected reason:\n${output}`,
+      );
+    }
+  } finally {
+    unlinkSync(fixturePath);
   }
 }
 

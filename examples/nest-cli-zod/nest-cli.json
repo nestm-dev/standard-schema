@@ -10,7 +10,8 @@
         "name": "@nestm/standard-schema",
         "options": {
           "controllerFileNameSuffix": [".controller.ts"],
-          "onAmbiguous": "error"
+          "onAmbiguous": "error",
+          "swagger": true
         }
       }
     ]

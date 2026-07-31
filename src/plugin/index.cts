@@ -3,7 +3,9 @@ import path = require('node:path');
 import ts = require('typescript');
 
 const PACKAGE_NAME = '@nestm/standard-schema';
+const PACKAGE_SWAGGER_SUBPATH = '@nestm/standard-schema/swagger';
 const NEST_COMMON_PACKAGE = '@nestjs/common';
+const NEST_SWAGGER_PACKAGE = '@nestjs/swagger';
 const DEFAULT_CONTROLLER_FILE_NAME_SUFFIX = [
   '.controller.ts',
   '.controller.mts',
@@ -30,7 +32,29 @@ const ROUTE_DECORATORS = new Set([
 ]);
 const NEST_RESPONSE_DECORATORS = new Set(['SerializeOptions']);
 const PACKAGE_RESPONSE_DECORATORS = new Set(['StandardSchemaResponse']);
+const PACKAGE_SWAGGER_RESPONSE_DECORATORS = new Set([
+  'ApiStandardSchemaResponse',
+]);
+const REQUEST_DECORATORS = new Set(['Body', 'Param', 'Query']);
 const RAW_RESPONSE_DECORATORS = new Set(['Res', 'Response']);
+const SWAGGER_RESPONSE_STATUS = new Map<string, number>([
+  ['ApiOkResponse', 200],
+  ['ApiCreatedResponse', 201],
+  ['ApiAcceptedResponse', 202],
+  ['ApiNonAuthoritativeInformationResponse', 203],
+  ['ApiNoContentResponse', 204],
+  ['ApiResetContentResponse', 205],
+  ['ApiPartialContentResponse', 206],
+  ['ApiMultiStatusResponse', 207],
+  ['ApiAlreadyReportedResponse', 208],
+  ['ApiImUsedResponse', 226],
+]);
+const EXPLICIT_SWAGGER_CONTRACT_PROPERTIES = new Set([
+  'content',
+  'schema',
+  'standardSchema',
+  'type',
+]);
 const packageNameByDirectory = new Map<string, string | undefined>();
 
 type AmbiguousBehavior = 'error' | 'skip';
@@ -38,6 +62,7 @@ type AmbiguousBehavior = 'error' | 'skip';
 interface StandardSchemaPluginOptions {
   readonly controllerFileNameSuffix: readonly string[];
   readonly onAmbiguous: AmbiguousBehavior;
+  readonly swagger: boolean;
 }
 
 interface DecoratorIdentity {
@@ -45,7 +70,7 @@ interface DecoratorIdentity {
   readonly name: string;
 }
 
-interface ResponseDtoReference {
+interface DtoReference {
   readonly classSymbol: ts.Symbol;
   readonly expression: ts.Expression;
 }
@@ -53,7 +78,34 @@ interface ResponseDtoReference {
 type ReturnAnalysis =
   | {
       readonly kind: 'infer';
-      readonly reference: ResponseDtoReference;
+      readonly isArray: boolean;
+      readonly reference: DtoReference;
+      readonly status: number | undefined;
+    }
+  | {
+      readonly kind: 'skip';
+    };
+
+type RequestAnalysis =
+  | {
+      readonly kind: 'infer';
+      readonly decorator: ts.Decorator;
+      readonly reference: DtoReference;
+    }
+  | {
+      readonly kind: 'skip';
+    };
+
+interface HelperUsage {
+  root: boolean;
+  swagger: boolean;
+}
+
+type SwaggerResponseMetadataAnalysis =
+  | {
+      readonly kind: 'infer';
+      readonly hasExplicitContract: boolean;
+      readonly target: ts.Decorator | undefined;
     }
   | {
       readonly kind: 'skip';
@@ -103,7 +155,8 @@ function preflightProgram(
   checker: ts.TypeChecker,
   options: StandardSchemaPluginOptions,
 ): void {
-  const errors: Error[] = [];
+  const requestErrors: Error[] = [];
+  const responseErrors: Error[] = [];
 
   for (const sourceFile of program.getSourceFiles()) {
     if (
@@ -125,22 +178,45 @@ function preflightProgram(
           checker,
           new Set(['Controller']),
           NEST_COMMON_PACKAGE,
-        ) ||
-        hasExplicitResponseDecorator(statement, checker)
+        )
       ) {
         continue;
       }
+
+      const classHasExplicitResponse = hasExplicitResponseDecorator(
+        statement,
+        checker,
+      );
 
       for (const member of statement.members) {
         if (
           !ts.isMethodDeclaration(member) ||
           member.body === undefined ||
-          !hasDecorator(
-            member,
-            checker,
-            ROUTE_DECORATORS,
-            NEST_COMMON_PACKAGE,
-          ) ||
+          !hasDecorator(member, checker, ROUTE_DECORATORS, NEST_COMMON_PACKAGE)
+        ) {
+          continue;
+        }
+
+        if (options.swagger) {
+          for (const parameter of member.parameters) {
+            try {
+              analyzeRequestParameter(
+                parameter,
+                member,
+                statement,
+                sourceFile,
+                checker,
+                options,
+                new ImportPlanner(ts.factory),
+              );
+            } catch (error: unknown) {
+              requestErrors.push(toError(error));
+            }
+          }
+        }
+
+        if (
+          classHasExplicitResponse ||
           hasExplicitResponseDecorator(member, checker) ||
           hasRawResponseParameter(member, checker) ||
           isNoContentRoute(member, checker) ||
@@ -150,7 +226,7 @@ function preflightProgram(
         }
 
         try {
-          analyzeReturnType(
+          const analysis = analyzeReturnType(
             member.type,
             member,
             statement,
@@ -159,23 +235,46 @@ function preflightProgram(
             options,
             new ImportPlanner(ts.factory),
           );
+
+          if (analysis.kind === 'infer' && options.swagger) {
+            analyzeSwaggerResponseMetadata(
+              member,
+              analysis,
+              sourceFile,
+              checker,
+              options,
+            );
+          }
         } catch (error: unknown) {
-          errors.push(
-            error instanceof Error ? error : new Error(String(error)),
-          );
+          responseErrors.push(toError(error));
         }
       }
     }
   }
 
-  if (errors.length > 0) {
-    throw new Error(
-      [
-        `${PACKAGE_NAME}/plugin found ${errors.length} ambiguous response contract${errors.length === 1 ? '' : 's'}:`,
-        ...errors.map((error) => `- ${error.message}`),
-      ].join('\n'),
-    );
+  const errors = [...requestErrors, ...responseErrors];
+
+  if (errors.length === 0) {
+    return;
   }
+
+  const kind =
+    requestErrors.length > 0 && responseErrors.length > 0
+      ? 'request/response'
+      : requestErrors.length > 0
+        ? 'request'
+        : 'response';
+
+  throw new Error(
+    [
+      `${PACKAGE_NAME}/plugin found ${errors.length} ambiguous ${kind} contract${errors.length === 1 ? '' : 's'}:`,
+      ...errors.map((error) => `- ${error.message}`),
+    ].join('\n'),
+  );
+}
+
+function toError(error: unknown): Error {
+  return error instanceof Error ? error : new Error(String(error));
 }
 
 function parseOptions(
@@ -183,6 +282,7 @@ function parseOptions(
 ): StandardSchemaPluginOptions {
   const rawSuffix = rawOptions['controllerFileNameSuffix'];
   const rawOnAmbiguous = rawOptions['onAmbiguous'];
+  const rawSwagger = rawOptions['swagger'];
 
   let controllerFileNameSuffix: readonly string[] =
     DEFAULT_CONTROLLER_FILE_NAME_SUFFIX;
@@ -214,9 +314,16 @@ function parseOptions(
     );
   }
 
+  if (rawSwagger !== undefined && typeof rawSwagger !== 'boolean') {
+    throw new TypeError(
+      `${PACKAGE_NAME}/plugin option "swagger" must be a boolean.`,
+    );
+  }
+
   return {
     controllerFileNameSuffix,
     onAmbiguous: rawOnAmbiguous ?? 'error',
+    swagger: rawSwagger ?? false,
   };
 }
 
@@ -234,10 +341,17 @@ function transformControllerFile(
   options: StandardSchemaPluginOptions,
 ): ts.SourceFile {
   const importPlanner = new ImportPlanner(context.factory);
-  const namespaceIdentifier = context.factory.createIdentifier(
+  const rootNamespaceIdentifier = context.factory.createIdentifier(
     findAvailableIdentifier(sourceFile, '_nestmStandardSchema'),
   );
-  let inferredResponseCount = 0;
+  const swaggerNamespaceIdentifier = context.factory.createIdentifier(
+    findAvailableIdentifier(sourceFile, '_nestmStandardSchemaSwagger'),
+  );
+  const helperUsage: HelperUsage = {
+    root: false,
+    swagger: false,
+  };
+  let changedMethodCount = 0;
 
   const statements = sourceFile.statements.map((statement) => {
     if (
@@ -258,27 +372,26 @@ function transformControllerFile(
       checker,
     );
     const members = statement.members.map((member) => {
-      if (
-        classHasExplicitResponse ||
-        !ts.isMethodDeclaration(member) ||
-        member.body === undefined
-      ) {
+      if (!ts.isMethodDeclaration(member) || member.body === undefined) {
         return member;
       }
 
       const updatedMethod = transformRouteMethod(
         member,
         statement,
+        classHasExplicitResponse,
         sourceFile,
         context.factory,
         checker,
         options,
         importPlanner,
-        namespaceIdentifier,
+        rootNamespaceIdentifier,
+        swaggerNamespaceIdentifier,
+        helperUsage,
       );
 
       if (updatedMethod !== member) {
-        inferredResponseCount += 1;
+        changedMethodCount += 1;
       }
 
       return updatedMethod;
@@ -294,29 +407,232 @@ function transformControllerFile(
     );
   });
 
-  if (inferredResponseCount === 0) {
+  if (changedMethodCount === 0) {
     return sourceFile;
   }
 
   const updatedImports = importPlanner.apply(statements);
-  const namespaceImport = context.factory.createImportDeclaration(
-    undefined,
-    context.factory.createImportClause(
-      false,
-      undefined,
-      context.factory.createNamespaceImport(namespaceIdentifier),
-    ),
-    context.factory.createStringLiteral(PACKAGE_NAME),
-    undefined,
-  );
+  const helperImports: ts.ImportDeclaration[] = [];
+
+  if (helperUsage.root) {
+    helperImports.push(
+      createNamespaceImport(
+        context.factory,
+        rootNamespaceIdentifier,
+        PACKAGE_NAME,
+      ),
+    );
+  }
+
+  if (helperUsage.swagger) {
+    helperImports.push(
+      createNamespaceImport(
+        context.factory,
+        swaggerNamespaceIdentifier,
+        PACKAGE_SWAGGER_SUBPATH,
+      ),
+    );
+  }
 
   return context.factory.updateSourceFile(sourceFile, [
-    namespaceImport,
+    ...helperImports,
     ...updatedImports,
   ]);
 }
 
+function createNamespaceImport(
+  factory: ts.NodeFactory,
+  identifier: ts.Identifier,
+  moduleSpecifier: string,
+): ts.ImportDeclaration {
+  return factory.createImportDeclaration(
+    undefined,
+    factory.createImportClause(
+      false,
+      undefined,
+      factory.createNamespaceImport(identifier),
+    ),
+    factory.createStringLiteral(moduleSpecifier),
+    undefined,
+  );
+}
+
 function transformRouteMethod(
+  method: ts.MethodDeclaration,
+  controller: ts.ClassDeclaration,
+  classHasExplicitResponse: boolean,
+  sourceFile: ts.SourceFile,
+  factory: ts.NodeFactory,
+  checker: ts.TypeChecker,
+  options: StandardSchemaPluginOptions,
+  importPlanner: ImportPlanner,
+  rootNamespaceIdentifier: ts.Identifier,
+  swaggerNamespaceIdentifier: ts.Identifier,
+  helperUsage: HelperUsage,
+): ts.MethodDeclaration {
+  if (!hasDecorator(method, checker, ROUTE_DECORATORS, NEST_COMMON_PACKAGE)) {
+    return method;
+  }
+
+  const parameters = options.swagger
+    ? method.parameters.map((parameter) =>
+        transformRequestParameter(
+          parameter,
+          method,
+          controller,
+          sourceFile,
+          factory,
+          checker,
+          options,
+          importPlanner,
+        ),
+      )
+    : method.parameters;
+  const decorators = [...getDecorators(method)];
+  let inferredResponseDecorator: ts.Decorator | undefined;
+
+  if (
+    !classHasExplicitResponse &&
+    !hasExplicitResponseDecorator(method, checker) &&
+    !hasRawResponseParameter(method, checker) &&
+    !isNoContentRoute(method, checker) &&
+    method.type !== undefined
+  ) {
+    const analysis = analyzeReturnType(
+      method.type,
+      method,
+      controller,
+      sourceFile,
+      checker,
+      options,
+      importPlanner,
+    );
+
+    if (analysis.kind === 'infer') {
+      if (options.swagger) {
+        const swaggerMetadata = analyzeSwaggerResponseMetadata(
+          method,
+          analysis,
+          sourceFile,
+          checker,
+          options,
+        );
+
+        if (swaggerMetadata.kind === 'skip') {
+          helperUsage.root = true;
+          inferredResponseDecorator = createResponseDecorator(
+            factory,
+            rootNamespaceIdentifier,
+            'StandardSchemaResponse',
+            analysis,
+            false,
+          );
+        } else if (
+          swaggerMetadata.target === undefined ||
+          !swaggerMetadata.hasExplicitContract
+        ) {
+          helperUsage.swagger = true;
+          inferredResponseDecorator = createResponseDecorator(
+            factory,
+            swaggerNamespaceIdentifier,
+            'ApiStandardSchemaResponse',
+            analysis,
+            true,
+          );
+        } else {
+          helperUsage.root = true;
+          inferredResponseDecorator = createResponseDecorator(
+            factory,
+            rootNamespaceIdentifier,
+            'StandardSchemaResponse',
+            analysis,
+            false,
+          );
+        }
+      } else {
+        helperUsage.root = true;
+        inferredResponseDecorator = createResponseDecorator(
+          factory,
+          rootNamespaceIdentifier,
+          'StandardSchemaResponse',
+          analysis,
+          false,
+        );
+      }
+    }
+  }
+
+  const parametersChanged = parameters.some(
+    (parameter, index) => parameter !== method.parameters[index],
+  );
+
+  if (inferredResponseDecorator === undefined && !parametersChanged) {
+    return method;
+  }
+
+  const modifiers = ts.getModifiers(method) ?? [];
+
+  return factory.updateMethodDeclaration(
+    method,
+    [
+      ...(inferredResponseDecorator === undefined
+        ? []
+        : [inferredResponseDecorator]),
+      ...decorators,
+      ...modifiers,
+    ],
+    method.asteriskToken,
+    method.name,
+    method.questionToken,
+    method.typeParameters,
+    parameters,
+    method.type,
+    method.body,
+  );
+}
+
+function createResponseDecorator(
+  factory: ts.NodeFactory,
+  namespaceIdentifier: ts.Identifier,
+  name: 'ApiStandardSchemaResponse' | 'StandardSchemaResponse',
+  analysis: Extract<ReturnAnalysis, { readonly kind: 'infer' }>,
+  includeSwaggerOptions: boolean,
+): ts.Decorator {
+  const arguments_: ts.Expression[] = [analysis.reference.expression];
+
+  if (includeSwaggerOptions) {
+    arguments_.push(
+      factory.createObjectLiteralExpression(
+        [
+          factory.createPropertyAssignment(
+            'status',
+            factory.createNumericLiteral(analysis.status ?? 200),
+          ),
+          ...(analysis.isArray
+            ? [
+                factory.createPropertyAssignment(
+                  'isArray',
+                  factory.createTrue(),
+                ),
+              ]
+            : []),
+        ],
+        false,
+      ),
+    );
+  }
+
+  return factory.createDecorator(
+    factory.createCallExpression(
+      factory.createPropertyAccessExpression(namespaceIdentifier, name),
+      undefined,
+      arguments_,
+    ),
+  );
+}
+
+function transformRequestParameter(
+  parameter: ts.ParameterDeclaration,
   method: ts.MethodDeclaration,
   controller: ts.ClassDeclaration,
   sourceFile: ts.SourceFile,
@@ -324,20 +640,9 @@ function transformRouteMethod(
   checker: ts.TypeChecker,
   options: StandardSchemaPluginOptions,
   importPlanner: ImportPlanner,
-  namespaceIdentifier: ts.Identifier,
-): ts.MethodDeclaration {
-  if (
-    !hasDecorator(method, checker, ROUTE_DECORATORS, NEST_COMMON_PACKAGE) ||
-    hasExplicitResponseDecorator(method, checker) ||
-    hasRawResponseParameter(method, checker) ||
-    isNoContentRoute(method, checker) ||
-    method.type === undefined
-  ) {
-    return method;
-  }
-
-  const analysis = analyzeReturnType(
-    method.type,
+): ts.ParameterDeclaration {
+  const analysis = analyzeRequestParameter(
+    parameter,
     method,
     controller,
     sourceFile,
@@ -347,32 +652,262 @@ function transformRouteMethod(
   );
 
   if (analysis.kind === 'skip') {
-    return method;
+    return parameter;
   }
 
-  const decorator = factory.createDecorator(
-    factory.createCallExpression(
-      factory.createPropertyAccessExpression(
-        namespaceIdentifier,
-        'StandardSchemaResponse',
+  const decoratorExpression = analysis.decorator.expression;
+
+  if (!ts.isCallExpression(decoratorExpression)) {
+    return parameter;
+  }
+
+  const schemaOptions = factory.createObjectLiteralExpression(
+    [
+      factory.createPropertyAssignment(
+        'schema',
+        factory.createPropertyAccessExpression(
+          analysis.reference.expression,
+          'schema',
+        ),
       ),
-      undefined,
-      [analysis.reference.expression],
+    ],
+    false,
+  );
+  const updatedDecorator = factory.updateDecorator(
+    analysis.decorator,
+    factory.updateCallExpression(
+      decoratorExpression,
+      decoratorExpression.expression,
+      decoratorExpression.typeArguments,
+      [schemaOptions],
     ),
   );
-  const decorators = getDecorators(method);
-  const modifiers = ts.getModifiers(method) ?? [];
+  const decorators = getDecorators(parameter).map((decorator) =>
+    decorator === analysis.decorator ? updatedDecorator : decorator,
+  );
+  const modifiers = ts.getModifiers(parameter) ?? [];
 
-  return factory.updateMethodDeclaration(
-    method,
-    [decorator, ...decorators, ...modifiers],
-    method.asteriskToken,
-    method.name,
-    method.questionToken,
-    method.typeParameters,
-    method.parameters,
-    method.type,
-    method.body,
+  return factory.updateParameterDeclaration(
+    parameter,
+    [...decorators, ...modifiers],
+    parameter.dotDotDotToken,
+    parameter.name,
+    parameter.questionToken,
+    parameter.type,
+    parameter.initializer,
+  );
+}
+
+function analyzeRequestParameter(
+  parameter: ts.ParameterDeclaration,
+  method: ts.MethodDeclaration,
+  controller: ts.ClassDeclaration,
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  options: StandardSchemaPluginOptions,
+  importPlanner: ImportPlanner,
+): RequestAnalysis {
+  if (parameter.type === undefined) {
+    return { kind: 'skip' };
+  }
+
+  const requestDecorators = getDecorators(parameter).filter((decorator) =>
+    decoratorMatches(
+      decorator,
+      checker,
+      REQUEST_DECORATORS,
+      NEST_COMMON_PACKAGE,
+    ),
+  );
+
+  if (requestDecorators.length === 0) {
+    return { kind: 'skip' };
+  }
+
+  const declaredType = unwrapResponseType(parameter.type);
+  const containsDto = containsRequestDto(declaredType, checker);
+
+  if (requestDecorators.length > 1) {
+    return containsDto
+      ? ambiguousRequest(
+          options,
+          parameter,
+          method,
+          sourceFile,
+          'multiple request parameter decorators cannot infer one schema',
+        )
+      : { kind: 'skip' };
+  }
+
+  const decorator = requestDecorators[0];
+
+  if (decorator === undefined || !ts.isCallExpression(decorator.expression)) {
+    return containsDto
+      ? ambiguousRequest(
+          options,
+          parameter,
+          method,
+          sourceFile,
+          'request schema inference requires a called parameter decorator',
+        )
+      : { kind: 'skip' };
+  }
+
+  const arguments_ = decorator.expression.arguments;
+
+  if (arguments_.length > 0) {
+    const firstArgument = arguments_[0];
+
+    if (
+      firstArgument !== undefined &&
+      isPropertyBoundRequestArgument(firstArgument, checker)
+    ) {
+      return containsDto
+        ? ambiguousRequest(
+            options,
+            parameter,
+            method,
+            sourceFile,
+            'property-bound request decorators require an explicit scalar schema',
+          )
+        : { kind: 'skip' };
+    }
+
+    if (
+      firstArgument !== undefined &&
+      hasExplicitParameterSchema(firstArgument)
+    ) {
+      return { kind: 'skip' };
+    }
+
+    return { kind: 'skip' };
+  }
+
+  if (
+    ts.isUnionTypeNode(declaredType) ||
+    ts.isIntersectionTypeNode(declaredType) ||
+    ts.isTupleTypeNode(declaredType) ||
+    isArrayType(declaredType, checker) ||
+    (ts.isTypeReferenceNode(declaredType) &&
+      (declaredType.typeArguments?.length ?? 0) > 0)
+  ) {
+    return containsDto
+      ? ambiguousRequest(
+          options,
+          parameter,
+          method,
+          sourceFile,
+          'request unions, wrappers, tuples, and arrays require one concrete request DTO',
+        )
+      : { kind: 'skip' };
+  }
+
+  const resolvedType = checker.getTypeFromTypeNode(declaredType);
+  const requestClassSymbol = getRequestDtoClassSymbol(resolvedType, checker);
+
+  if (requestClassSymbol === undefined) {
+    return containsDto
+      ? ambiguousRequest(
+          options,
+          parameter,
+          method,
+          sourceFile,
+          'the request DTO cannot be reduced to one concrete runtime class',
+        )
+      : { kind: 'skip' };
+  }
+
+  if (
+    !ts.isTypeReferenceNode(declaredType) ||
+    declaredType.typeArguments?.length
+  ) {
+    return ambiguousRequest(
+      options,
+      parameter,
+      method,
+      sourceFile,
+      'the request DTO cannot be referenced as a concrete runtime class',
+    );
+  }
+
+  const expression = createRuntimeReference(
+    declaredType.typeName,
+    requestClassSymbol,
+    controller,
+    sourceFile,
+    checker,
+    importPlanner,
+  );
+
+  if (expression === undefined) {
+    return ambiguousRequest(
+      options,
+      parameter,
+      method,
+      sourceFile,
+      'the request DTO is type-only or cannot be referenced safely at runtime',
+    );
+  }
+
+  return {
+    decorator,
+    kind: 'infer',
+    reference: {
+      classSymbol: requestClassSymbol,
+      expression,
+    },
+  };
+}
+
+function hasExplicitParameterSchema(expression: ts.Expression): boolean {
+  return (
+    ts.isObjectLiteralExpression(expression) &&
+    expression.properties.some(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        getPropertyNameText(property.name) === 'schema',
+    )
+  );
+}
+
+function isPropertyBoundRequestArgument(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+): boolean {
+  if (ts.isStringLiteralLike(expression)) {
+    return true;
+  }
+
+  const type = checker.getTypeAtLocation(expression);
+
+  return type.isStringLiteral() || (type.flags & ts.TypeFlags.StringLike) !== 0;
+}
+
+function ambiguousRequest(
+  options: StandardSchemaPluginOptions,
+  parameter: ts.ParameterDeclaration,
+  method: ts.MethodDeclaration,
+  sourceFile: ts.SourceFile,
+  reason: string,
+): RequestAnalysis {
+  if (options.onAmbiguous === 'skip') {
+    return { kind: 'skip' };
+  }
+
+  const position = sourceFile.getLineAndCharacterOfPosition(
+    parameter.getStart(),
+  );
+  const className = ts.isClassDeclaration(method.parent)
+    ? (method.parent.name?.text ?? '<anonymous controller>')
+    : '<controller>';
+  const methodName = method.name.getText(sourceFile);
+  const parameterName = parameter.name.getText(sourceFile);
+
+  throw new Error(
+    `${PACKAGE_NAME}/plugin: ${className}.${methodName}(${parameterName}): ${reason}. ` +
+      `Use a zero-argument @Body(), @Query(), or @Param() with one concrete request DTO, ` +
+      `or add native { schema } metadata explicitly. ` +
+      `(${sourceFile.fileName}:${position.line + 1}:${position.character + 1})`,
   );
 }
 
@@ -527,12 +1062,26 @@ function analyzeReturnType(
     );
   }
 
+  const status = options.swagger
+    ? resolveResponseStatus(method, sourceFile, checker, options)
+    : undefined;
+
+  if (status === undefined && options.swagger) {
+    return { kind: 'skip' };
+  }
+
+  if (status === 204) {
+    return { kind: 'skip' };
+  }
+
   return {
+    isArray: arrayDepth === 1,
     kind: 'infer',
     reference: {
       classSymbol: responseClassSymbol,
       expression,
     },
+    status,
   };
 }
 
@@ -555,6 +1104,370 @@ function ambiguous(
   throw new Error(
     `${PACKAGE_NAME}/plugin: ${className}.${methodName}: ${reason}. ` +
       `Add @StandardSchemaResponse(...) explicitly. ` +
+      `(${sourceFile.fileName}:${position.line + 1}:${position.character + 1})`,
+  );
+}
+
+function resolveResponseStatus(
+  method: ts.MethodDeclaration,
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  options: StandardSchemaPluginOptions,
+): number | undefined {
+  const httpCodeDecorator = getDecorators(method).find((decorator) =>
+    decoratorMatches(
+      decorator,
+      checker,
+      new Set(['HttpCode']),
+      NEST_COMMON_PACKAGE,
+    ),
+  );
+
+  if (httpCodeDecorator === undefined) {
+    const defaultStatus = resolveDefaultResponseStatus(method, checker);
+
+    if (defaultStatus !== undefined) {
+      return defaultStatus;
+    }
+
+    ambiguous(
+      options,
+      method,
+      sourceFile,
+      'the HTTP method and default response status cannot be resolved statically',
+    );
+    return undefined;
+  }
+
+  if (!ts.isCallExpression(httpCodeDecorator.expression)) {
+    ambiguous(
+      options,
+      method,
+      sourceFile,
+      'the response status from @HttpCode cannot be resolved statically',
+    );
+    return undefined;
+  }
+
+  const statusArgument = httpCodeDecorator.expression.arguments[0];
+  const status =
+    statusArgument === undefined
+      ? undefined
+      : resolveNumericExpression(statusArgument, checker);
+
+  if (status === undefined) {
+    ambiguous(
+      options,
+      method,
+      sourceFile,
+      'the response status from @HttpCode cannot be resolved statically',
+    );
+    return undefined;
+  }
+
+  return status;
+}
+
+function resolveDefaultResponseStatus(
+  method: ts.MethodDeclaration,
+  checker: ts.TypeChecker,
+): number | undefined {
+  for (const decorator of getDecorators(method)) {
+    const identity = getDecoratorIdentity(decorator, checker);
+
+    if (
+      identity === undefined ||
+      identity.moduleSpecifier !== NEST_COMMON_PACKAGE
+    ) {
+      continue;
+    }
+
+    if (identity.name === 'Post') {
+      return 201;
+    }
+
+    if (identity.name !== 'RequestMapping') {
+      continue;
+    }
+
+    if (!ts.isCallExpression(decorator.expression)) {
+      return undefined;
+    }
+
+    const metadata = decorator.expression.arguments[0];
+
+    if (metadata === undefined) {
+      return 200;
+    }
+
+    if (!ts.isObjectLiteralExpression(metadata)) {
+      return undefined;
+    }
+
+    const methodProperty = metadata.properties.find(
+      (property) =>
+        ts.isPropertyAssignment(property) &&
+        getPropertyNameText(property.name) === 'method',
+    );
+
+    if (methodProperty === undefined) {
+      return metadata.properties.some(ts.isSpreadAssignment) ? undefined : 200;
+    }
+
+    if (!ts.isPropertyAssignment(methodProperty)) {
+      return undefined;
+    }
+
+    const requestMethod = resolveNumericExpression(
+      methodProperty.initializer,
+      checker,
+    );
+
+    return requestMethod === undefined
+      ? undefined
+      : requestMethod === 1
+        ? 201
+        : 200;
+  }
+
+  return 200;
+}
+
+function resolveNumericExpression(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+): number | undefined {
+  if (ts.isNumericLiteral(expression)) {
+    return Number(expression.text);
+  }
+
+  if (
+    ts.isPrefixUnaryExpression(expression) &&
+    ts.isNumericLiteral(expression.operand)
+  ) {
+    const value = Number(expression.operand.text);
+
+    return expression.operator === ts.SyntaxKind.MinusToken ? -value : value;
+  }
+
+  const type = checker.getTypeAtLocation(expression);
+
+  return type.isNumberLiteral() ? type.value : undefined;
+}
+
+function analyzeSwaggerResponseMetadata(
+  method: ts.MethodDeclaration,
+  analysis: Extract<ReturnAnalysis, { readonly kind: 'infer' }>,
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  options: StandardSchemaPluginOptions,
+): SwaggerResponseMetadataAnalysis {
+  const matches: ts.Decorator[] = [];
+
+  for (const decorator of getDecorators(method)) {
+    const status = getSwaggerResponseStatus(decorator, checker);
+
+    if (status.kind === 'unresolved') {
+      return ambiguousSwaggerMetadata(
+        options,
+        method,
+        sourceFile,
+        'an @ApiResponse status cannot be resolved statically',
+      );
+    }
+
+    if (status.kind === 'known' && status.value === (analysis.status ?? 200)) {
+      matches.push(decorator);
+    }
+  }
+
+  if (matches.length > 1) {
+    return ambiguousSwaggerMetadata(
+      options,
+      method,
+      sourceFile,
+      'multiple Swagger decorators describe the inferred success status',
+    );
+  }
+
+  const target = matches[0];
+
+  if (target === undefined) {
+    return {
+      hasExplicitContract: false,
+      kind: 'infer',
+      target: undefined,
+    };
+  }
+
+  if (!ts.isCallExpression(target.expression)) {
+    return ambiguousSwaggerMetadata(
+      options,
+      method,
+      sourceFile,
+      'the existing Swagger success decorator cannot be enriched safely',
+    );
+  }
+
+  const optionsExpression = target.expression.arguments[0];
+
+  if (optionsExpression === undefined) {
+    return {
+      hasExplicitContract: false,
+      kind: 'infer',
+      target,
+    };
+  }
+
+  if (!ts.isObjectLiteralExpression(optionsExpression)) {
+    return ambiguousSwaggerMetadata(
+      options,
+      method,
+      sourceFile,
+      'the existing Swagger success options are not statically inspectable',
+    );
+  }
+
+  if (
+    optionsExpression.properties.some(
+      (property) =>
+        ts.isSpreadAssignment(property) ||
+        getObjectLiteralPropertyName(property) === undefined,
+    )
+  ) {
+    return ambiguousSwaggerMetadata(
+      options,
+      method,
+      sourceFile,
+      'the existing Swagger success options contain dynamic properties',
+    );
+  }
+
+  return {
+    hasExplicitContract: optionsExpression.properties.some((property) =>
+      EXPLICIT_SWAGGER_CONTRACT_PROPERTIES.has(
+        getObjectLiteralPropertyName(property) ?? '',
+      ),
+    ),
+    kind: 'infer',
+    target,
+  };
+}
+
+function getSwaggerResponseStatus(
+  decorator: ts.Decorator,
+  checker: ts.TypeChecker,
+):
+  | { readonly kind: 'known'; readonly value: number }
+  | { readonly kind: 'unresolved' }
+  | { readonly kind: 'unrelated' } {
+  const identity = getDecoratorIdentity(decorator, checker);
+
+  if (
+    identity === undefined ||
+    identity.moduleSpecifier !== NEST_SWAGGER_PACKAGE
+  ) {
+    return { kind: 'unrelated' };
+  }
+
+  const knownStatus = SWAGGER_RESPONSE_STATUS.get(identity.name);
+
+  if (knownStatus !== undefined) {
+    return {
+      kind: 'known',
+      value: knownStatus,
+    };
+  }
+
+  if (identity.name !== 'ApiResponse') {
+    return { kind: 'unrelated' };
+  }
+
+  if (!ts.isCallExpression(decorator.expression)) {
+    return { kind: 'unresolved' };
+  }
+
+  const optionsExpression = decorator.expression.arguments[0];
+
+  if (
+    optionsExpression === undefined ||
+    !ts.isObjectLiteralExpression(optionsExpression)
+  ) {
+    return { kind: 'unresolved' };
+  }
+
+  const statusProperty = optionsExpression.properties.find(
+    (property) =>
+      ts.isPropertyAssignment(property) &&
+      getPropertyNameText(property.name) === 'status',
+  );
+
+  if (
+    statusProperty === undefined ||
+    !ts.isPropertyAssignment(statusProperty)
+  ) {
+    return { kind: 'unrelated' };
+  }
+
+  const status = resolveNumericExpression(statusProperty.initializer, checker);
+
+  if (status !== undefined) {
+    return {
+      kind: 'known',
+      value: status,
+    };
+  }
+
+  return resolveStringExpression(statusProperty.initializer, checker) ===
+    undefined
+    ? { kind: 'unresolved' }
+    : { kind: 'unrelated' };
+}
+
+function resolveStringExpression(
+  expression: ts.Expression,
+  checker: ts.TypeChecker,
+): string | undefined {
+  if (ts.isStringLiteralLike(expression)) {
+    return expression.text;
+  }
+
+  const type = checker.getTypeAtLocation(expression);
+
+  return type.isStringLiteral() ? type.value : undefined;
+}
+
+function getObjectLiteralPropertyName(
+  property: ts.ObjectLiteralElementLike,
+): string | undefined {
+  if (ts.isSpreadAssignment(property)) {
+    return undefined;
+  }
+
+  return property.name === undefined
+    ? undefined
+    : getPropertyNameText(property.name);
+}
+
+function ambiguousSwaggerMetadata(
+  options: StandardSchemaPluginOptions,
+  method: ts.MethodDeclaration,
+  sourceFile: ts.SourceFile,
+  reason: string,
+): SwaggerResponseMetadataAnalysis {
+  if (options.onAmbiguous === 'skip') {
+    return { kind: 'skip' };
+  }
+
+  const position = sourceFile.getLineAndCharacterOfPosition(method.getStart());
+  const className = ts.isClassDeclaration(method.parent)
+    ? (method.parent.name?.text ?? '<anonymous controller>')
+    : '<controller>';
+  const methodName = method.name.getText(sourceFile);
+
+  throw new Error(
+    `${PACKAGE_NAME}/plugin: ${className}.${methodName}: ${reason}. ` +
+      `Use @ApiStandardSchemaResponse(...) or explicit static Swagger response metadata. ` +
       `(${sourceFile.fileName}:${position.line + 1}:${position.character + 1})`,
   );
 }
@@ -653,6 +1566,21 @@ function getResponseDtoClassSymbol(
   type: ts.Type,
   checker: ts.TypeChecker,
 ): ts.Symbol | undefined {
+  return getDtoClassSymbol(type, checker, 'STANDARD_SCHEMA_RESPONSE_DTO');
+}
+
+function getRequestDtoClassSymbol(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+): ts.Symbol | undefined {
+  return getDtoClassSymbol(type, checker, 'STANDARD_SCHEMA_DTO');
+}
+
+function getDtoClassSymbol(
+  type: ts.Type,
+  checker: ts.TypeChecker,
+  brandName: 'STANDARD_SCHEMA_DTO' | 'STANDARD_SCHEMA_RESPONSE_DTO',
+): ts.Symbol | undefined {
   const symbol = type.getSymbol();
 
   if (symbol === undefined) {
@@ -670,7 +1598,7 @@ function getResponseDtoClassSymbol(
     resolvedSymbol,
     declaration,
   );
-  const responseBrand = staticType.getProperties().find((property) => {
+  const dtoBrand = staticType.getProperties().find((property) => {
     return property.declarations?.some((propertyDeclaration) => {
       const propertyName = (propertyDeclaration as ts.NamedDeclaration).name;
 
@@ -685,8 +1613,7 @@ function getResponseDtoClassSymbol(
 
       return (
         brandSymbol !== undefined &&
-        resolveAlias(brandSymbol, checker).getName() ===
-          'STANDARD_SCHEMA_RESPONSE_DTO' &&
+        resolveAlias(brandSymbol, checker).getName() === brandName &&
         isSymbolDeclaredByPackage(
           resolveAlias(brandSymbol, checker),
           PACKAGE_NAME,
@@ -695,17 +1622,17 @@ function getResponseDtoClassSymbol(
     });
   });
 
-  if (responseBrand === undefined) {
+  if (dtoBrand === undefined) {
     return undefined;
   }
 
   const brandDeclaration =
-    responseBrand.valueDeclaration ?? responseBrand.declarations?.[0];
+    dtoBrand.valueDeclaration ?? dtoBrand.declarations?.[0];
 
   if (
     brandDeclaration === undefined ||
     checker.typeToString(
-      checker.getTypeOfSymbolAtLocation(responseBrand, brandDeclaration),
+      checker.getTypeOfSymbolAtLocation(dtoBrand, brandDeclaration),
     ) !== 'true'
   ) {
     return undefined;
@@ -714,37 +1641,55 @@ function getResponseDtoClassSymbol(
   return resolvedSymbol;
 }
 
+function containsRequestDto(
+  typeNode: ts.TypeNode,
+  checker: ts.TypeChecker,
+): boolean {
+  return containsDto(typeNode, checker, getRequestDtoClassSymbol);
+}
+
 function containsResponseDto(
   typeNode: ts.TypeNode,
   checker: ts.TypeChecker,
 ): boolean {
+  return containsDto(typeNode, checker, getResponseDtoClassSymbol);
+}
+
+function containsDto(
+  typeNode: ts.TypeNode,
+  checker: ts.TypeChecker,
+  getClassSymbol: (
+    type: ts.Type,
+    checker: ts.TypeChecker,
+  ) => ts.Symbol | undefined,
+): boolean {
   const unwrapped = unwrapResponseType(typeNode);
   const type = checker.getTypeFromTypeNode(unwrapped);
 
-  if (getResponseDtoClassSymbol(type, checker) !== undefined) {
+  if (getClassSymbol(type, checker) !== undefined) {
     return true;
   }
 
   if (ts.isUnionTypeNode(unwrapped) || ts.isIntersectionTypeNode(unwrapped)) {
     return unwrapped.types.some((member) =>
-      containsResponseDto(member, checker),
+      containsDto(member, checker, getClassSymbol),
     );
   }
 
   if (ts.isArrayTypeNode(unwrapped)) {
-    return containsResponseDto(unwrapped.elementType, checker);
+    return containsDto(unwrapped.elementType, checker, getClassSymbol);
   }
 
   if (ts.isTupleTypeNode(unwrapped)) {
     return unwrapped.elements.some((element) =>
-      containsResponseDto(element, checker),
+      containsDto(element, checker, getClassSymbol),
     );
   }
 
   return (
     ts.isTypeReferenceNode(unwrapped) &&
     (unwrapped.typeArguments?.some((argument) =>
-      containsResponseDto(argument, checker),
+      containsDto(argument, checker, getClassSymbol),
     ) ??
       false)
   );
@@ -862,6 +1807,12 @@ function hasExplicitResponseDecorator(
         PACKAGE_RESPONSE_DECORATORS,
         PACKAGE_NAME,
       ) ||
+      decoratorMatches(
+        decorator,
+        checker,
+        PACKAGE_SWAGGER_RESPONSE_DECORATORS,
+        PACKAGE_SWAGGER_SUBPATH,
+      ) ||
       isSyntheticStandardSchemaResponseDecorator(decorator)
     );
   });
@@ -883,7 +1834,8 @@ function isSyntheticStandardSchemaResponseDecorator(
   return (
     ts.isIdentifier(expression.expression) &&
     expression.expression.text.startsWith('_nestmStandardSchema') &&
-    expression.name.text === 'StandardSchemaResponse'
+    (expression.name.text === 'ApiStandardSchemaResponse' ||
+      expression.name.text === 'StandardSchemaResponse')
   );
 }
 
@@ -1017,17 +1969,26 @@ function getDeclarationPackage(symbol: ts.Symbol): string | undefined {
     return NEST_COMMON_PACKAGE;
   }
 
-  if (fileName.includes('/node_modules/@nestm/standard-schema/')) {
-    return PACKAGE_NAME;
+  if (fileName.includes('/node_modules/@nestjs/swagger/')) {
+    return NEST_SWAGGER_PACKAGE;
   }
 
-  if (
-    getNearestPackageName(fileName) === PACKAGE_NAME &&
-    /\/(?:dist|src)\/standard-schema-response\.decorator\.(?:d\.)?[cm]?ts$/.test(
-      fileName,
-    )
-  ) {
-    return PACKAGE_NAME;
+  if (getNearestPackageName(fileName) === PACKAGE_NAME) {
+    if (
+      /\/(?:dist|src)\/swagger\/api-standard-schema-response\.decorator\.(?:d\.)?[cm]?ts$/.test(
+        fileName,
+      )
+    ) {
+      return PACKAGE_SWAGGER_SUBPATH;
+    }
+
+    if (
+      /\/(?:dist|src)\/standard-schema-response\.decorator\.(?:d\.)?[cm]?ts$/.test(
+        fileName,
+      )
+    ) {
+      return PACKAGE_NAME;
+    }
   }
 
   return undefined;
