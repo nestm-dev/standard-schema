@@ -15,7 +15,9 @@ import {
 } from '../standard-schema-response.decorator.js';
 import { getStandardSchema, type StandardSchemaSource } from '../schema.js';
 
-const ARRAY_ITEM_STANDARD_SCHEMA = Symbol('arrayItemStandardSchema');
+const ARRAY_ITEM_STANDARD_SCHEMA = Symbol.for(
+  '@nestm/standard-schema:swagger-array-item',
+);
 
 type DistributiveOmit<T, Keys extends PropertyKey> = T extends unknown
   ? Omit<T, Keys>
