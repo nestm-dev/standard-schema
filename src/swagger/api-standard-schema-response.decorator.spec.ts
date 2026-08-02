@@ -186,4 +186,23 @@ describe(ApiStandardSchemaResponse.name, () => {
       schemaType: 'output',
     });
   });
+
+  it('recognizes array metadata created by another installed package copy', () => {
+    const converter = vi.fn(() => ({ schema: { type: 'object' } }));
+    const wrappedConverter = withStandardSchemaResponseArrays(converter);
+    const duplicateCopySchema = {
+      [Symbol.for('@nestm/standard-schema:swagger-array-item')]:
+        ConverterOnlyProductSchema,
+      '~standard': ConverterOnlyProductSchema['~standard'],
+    } as StandardSchemaV1;
+
+    expect(
+      wrappedConverter(duplicateCopySchema, { schemaType: 'output' }),
+    ).toEqual({
+      schema: { items: { type: 'object' }, type: 'array' },
+    });
+    expect(converter).toHaveBeenCalledWith(ConverterOnlyProductSchema, {
+      schemaType: 'output',
+    });
+  });
 });
