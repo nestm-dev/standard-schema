@@ -1,5 +1,12 @@
 # @nestm/standard-schema
 
+## 0.1.0-alpha.6
+
+### Patch Changes
+
+- f3eb880: Make Swagger array response markers interoperable across duplicated package
+  copies so decorators and metadata readers agree on array item schemas.
+
 ## 0.1.0-alpha.5
 
 ### Patch Changes

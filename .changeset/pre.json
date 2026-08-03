@@ -10,6 +10,7 @@
     "fix-alpha-publish",
     "infer-native-responses",
     "initial-release",
+    "share-swagger-array-markers",
     "swagger-native-metadata"
   ]
 }
