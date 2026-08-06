@@ -18,15 +18,17 @@ jobs:
     # The npm trusted publisher must be bound to this environment.
     environment: release
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/setup@v2
+        with:
+          install: false
       # Do not set `registry-url`: it writes an _authToken line to .npmrc,
       # which defeats npm trusted publishing over OIDC.
-      - uses: actions/setup-node@v5
+      - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm }
       # The release script delegates publishing to pnpm. Native OIDC publishing
-      # requires pnpm >= 11.11; packageManager currently pins 11.18.0.
+      # requires pnpm >= 11.11; packageManager currently pins 11.20.0.
       - name: Assert pnpm supports native OIDC publishing
         run: |
           node -e '
