@@ -1,6 +1,6 @@
 {
   "name": "@nestm/standard-schema",
-  "version": "0.1.0-alpha.6",
+  "version": "0.1.0-alpha.7",
   "description": "DTO ergonomics for NestJS 12's native Standard Schema validation and serialization.",
   "license": "MIT",
   "author": "Kauan Guesser",

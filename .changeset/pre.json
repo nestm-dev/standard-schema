@@ -7,6 +7,7 @@
   },
   "changesets": [
     "document-alpha-install",
+    "document-explicit-standard-schema-response",
     "fix-alpha-publish",
     "infer-native-responses",
     "initial-release",
