@@ -488,8 +488,43 @@ function transformRouteMethod(
         ),
       )
     : method.parameters;
-  const decorators = [...getDecorators(method)];
+  let decorators = [...getDecorators(method)];
   let inferredResponseDecorator: ts.Decorator | undefined;
+  let rewroteResponseDecorator = false;
+
+  // A method carrying `@StandardSchemaResponse` already declares its contract, so the inference
+  // below skips it — but that decorator is `@SerializeOptions` under the hood and emits no
+  // Swagger metadata, leaving the route documented with no response schema at all. Upgrade it to
+  // the documented form, which serializes identically. Methods that already carry
+  // `@ApiStandardSchemaResponse` are left untouched: they are documented by hand.
+  if (
+    options.swagger &&
+    !hasDecorator(
+      method,
+      checker,
+      PACKAGE_SWAGGER_RESPONSE_DECORATORS,
+      PACKAGE_SWAGGER_SUBPATH,
+    )
+  ) {
+    const upgradable = findUpgradableResponseDecorator(method, checker);
+    if (upgradable !== undefined) {
+      helperUsage.swagger = true;
+      rewroteResponseDecorator = true;
+      const documented = factory.createDecorator(
+        factory.createCallExpression(
+          factory.createPropertyAccessExpression(
+            swaggerNamespaceIdentifier,
+            'ApiStandardSchemaResponse',
+          ),
+          undefined,
+          [upgradable.source],
+        ),
+      );
+      decorators = decorators.map((decorator) =>
+        decorator === upgradable.decorator ? documented : decorator,
+      );
+    }
+  }
 
   if (
     !classHasExplicitResponse &&
@@ -566,7 +601,11 @@ function transformRouteMethod(
     (parameter, index) => parameter !== method.parameters[index],
   );
 
-  if (inferredResponseDecorator === undefined && !parametersChanged) {
+  if (
+    inferredResponseDecorator === undefined &&
+    !parametersChanged &&
+    !rewroteResponseDecorator
+  ) {
     return method;
   }
 
@@ -1816,6 +1855,42 @@ function hasExplicitResponseDecorator(
       isSyntheticStandardSchemaResponseDecorator(decorator)
     );
   });
+}
+
+/**
+ * The method's own `@StandardSchemaResponse(source)`, when it can be upgraded to the documented
+ * form.
+ *
+ * `ApiStandardSchemaResponse(source)` applies `StandardSchemaResponse(source, {})` and adds
+ * `ApiResponse` — a strict superset, and byte-identical serialization for a single-argument
+ * call. That equivalence is why only single-argument calls qualify: with a second argument the
+ * two decorators partition the options differently (`validateOptions` goes to serialization, the
+ * rest to Swagger), so rewriting could silently move a `SerializeOptions` key into the document.
+ * Those keep their current behaviour and the author can opt in by hand.
+ */
+function findUpgradableResponseDecorator(
+  method: ts.MethodDeclaration,
+  checker: ts.TypeChecker,
+):
+  | { readonly decorator: ts.Decorator; readonly source: ts.Expression }
+  | undefined {
+  for (const decorator of getDecorators(method)) {
+    if (
+      !decoratorMatches(
+        decorator,
+        checker,
+        PACKAGE_RESPONSE_DECORATORS,
+        PACKAGE_NAME,
+      ) ||
+      !ts.isCallExpression(decorator.expression) ||
+      decorator.expression.arguments.length !== 1
+    ) {
+      continue;
+    }
+    const [source] = decorator.expression.arguments;
+    if (source !== undefined) return { decorator, source };
+  }
+  return undefined;
 }
 
 function isSyntheticStandardSchemaResponseDecorator(

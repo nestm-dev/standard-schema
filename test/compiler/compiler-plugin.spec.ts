@@ -389,6 +389,95 @@ export class ExplicitController {
     ).toBe(3);
   });
 
+  it('documents an explicit StandardSchemaResponse instead of leaving it undocumented', () => {
+    // `@StandardSchemaResponse` is `@SerializeOptions` underneath: it drives serialization and
+    // emits no Swagger metadata. Because it also counts as an explicit contract, inference skips
+    // the method — so before this, an annotated route produced `200: { description: '' }` with no
+    // schema at all. `ApiStandardSchemaResponse(source)` applies the very same
+    // `StandardSchemaResponse(source, {})` plus `ApiResponse`, so serialization is unchanged.
+    const result = compileFixture(
+      {
+        'product.dto.ts': responseDtoSource,
+        'products.controller.ts': `
+import { Controller, Get, Post } from '@nestjs/common';
+import { StandardSchemaResponse } from '@nestm/standard-schema';
+import { ApiStandardSchemaResponse } from '@nestm/standard-schema/swagger';
+import { ProductResponseDto, OtherProductResponseDto } from './product.dto.js';
+
+@Controller('products')
+export class ProductsController {
+  @Get('documented')
+  @StandardSchemaResponse(ProductResponseDto)
+  documented() {
+    return { id: 1, name: 'Documented', publishedAt: new Date() };
+  }
+
+  @Get('already-documented')
+  @ApiStandardSchemaResponse(OtherProductResponseDto)
+  alreadyDocumented() {
+    return { id: 2, name: 'Hand written', publishedAt: new Date() };
+  }
+
+  @Post('with-options')
+  @StandardSchemaResponse(ProductResponseDto, { validateOptions: {} })
+  withOptions() {
+    return { id: 3, name: 'Options', publishedAt: new Date() };
+  }
+}
+`,
+      },
+      { pluginOptions: { swagger: true } },
+    );
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+
+    // Upgraded, and the runtime-only form is gone from that route.
+    expect(javascript).toContain(
+      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto)',
+    );
+
+    // A hand-written swagger decorator is authoritative and must not be duplicated.
+    expect(
+      countOccurrences(
+        javascript,
+        'ApiStandardSchemaResponse(OtherProductResponseDto)',
+      ),
+    ).toBe(1);
+
+    // Two arguments partition options differently between the two decorators, so rewriting could
+    // move a serialization key into the document. Left exactly as written.
+    expect(javascript).toContain(
+      'StandardSchemaResponse(ProductResponseDto, { validateOptions: {} })',
+    );
+    expect(javascript).not.toContain(
+      'ApiStandardSchemaResponse(ProductResponseDto, { validateOptions: {} })',
+    );
+  });
+
+  it('leaves StandardSchemaResponse alone when swagger output is disabled', () => {
+    const result = compileFixture({
+      'product.dto.ts': responseDtoSource,
+      'products.controller.ts': `
+import { Controller, Get } from '@nestjs/common';
+import { StandardSchemaResponse } from '@nestm/standard-schema';
+import { ProductResponseDto } from './product.dto.js';
+
+@Controller('products')
+export class ProductsController {
+  @Get()
+  find() {
+    return { id: 1, name: 'Plain', publishedAt: new Date() };
+  }
+}
+`,
+    });
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+    expect(javascript).not.toContain('ApiStandardSchemaResponse');
+  });
+
   it('does not treat unrelated local decorators as explicit response metadata', () => {
     const result = compileFixture({
       'product.dto.ts': responseDtoSource,
