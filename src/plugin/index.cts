@@ -504,10 +504,29 @@ function transformRouteMethod(
       checker,
       PACKAGE_SWAGGER_RESPONSE_DECORATORS,
       PACKAGE_SWAGGER_SUBPATH,
-    )
+    ) &&
+    // The status must be knowable. A raw `@Res()` hands status control to the handler body, and a
+    // redirect route ignores `@HttpCode` outright — both are populations the inference path
+    // already refuses to guess for, and guessing here would be worse than saying nothing.
+    !hasRawResponseParameter(method, checker) &&
+    !isRedirectRoute(method, checker) &&
+    !isNoContentRoute(method, checker) &&
+    !hasSwaggerResponseDecorator(method, checker)
   ) {
     const upgradable = findUpgradableResponseDecorator(method, checker);
-    if (upgradable !== undefined) {
+    const status = resolveRewriteResponseStatus(
+      method,
+      sourceFile,
+      checker,
+      options,
+    );
+
+    // `undefined` means the status could not be resolved statically, and 204 must never carry a
+    // body. Both leave the decorator exactly as written rather than falling back: a status-less
+    // rewrite reintroduces the `default`-key bug, and `?? 200` fabricates. Emitting nothing is
+    // safe — with no response metadata at all, Swagger's own explorer falls back to the correct
+    // 200/201 key, which is strictly better than the `default` entry that suppresses it.
+    if (upgradable !== undefined && status !== undefined && status !== 204) {
       helperUsage.swagger = true;
       rewroteResponseDecorator = true;
       const documented = factory.createDecorator(
@@ -517,7 +536,21 @@ function transformRouteMethod(
             'ApiStandardSchemaResponse',
           ),
           undefined,
-          [upgradable.source],
+          [
+            upgradable.source,
+            // Status only. `isArray` would need return-type analysis the rewrite does not do, and
+            // the author's source may already be an array schema — `getSwaggerResponseSchema`
+            // would double-wrap it.
+            factory.createObjectLiteralExpression(
+              [
+                factory.createPropertyAssignment(
+                  'status',
+                  factory.createNumericLiteral(status),
+                ),
+              ],
+              false,
+            ),
+          ],
         ),
       );
       decorators = decorators.map((decorator) =>
@@ -1815,6 +1848,69 @@ function isNoContentRoute(
   const statusType = checker.getTypeAtLocation(statusArgument);
 
   return statusType.isNumberLiteral() && statusType.value === 204;
+}
+
+/**
+ * `resolveResponseStatus` for the rewrite path, which must never fail a build.
+ *
+ * Inference may throw on an unresolvable status because inference is the plugin VOLUNTEERING
+ * metadata — the author can silence it by declaring one. The rewrite acts on code the author
+ * already wrote and that compiles today, and `preflightProgram` never visits these methods (it
+ * `continue`s on `hasExplicitResponseDecorator`), so a throw here escapes mid-transform,
+ * un-aggregated, carrying a remediation message that tells the author to add the very decorator
+ * the method already has. Forcing `skip` turns "cannot tell" into "leave it alone".
+ */
+function resolveRewriteResponseStatus(
+  method: ts.MethodDeclaration,
+  sourceFile: ts.SourceFile,
+  checker: ts.TypeChecker,
+  options: StandardSchemaPluginOptions,
+): number | undefined {
+  return resolveResponseStatus(method, sourceFile, checker, {
+    ...options,
+    onAmbiguous: 'skip',
+  });
+}
+
+/**
+ * Nest discards `@HttpCode` on a redirect route — `RouterResponseController.redirect` uses
+ * `result?.statusCode ?? redirectResponse.statusCode ?? HttpStatus.FOUND` — so neither the
+ * decorator nor the verb predicts the status. Any number we derived would be fiction.
+ */
+function isRedirectRoute(
+  method: ts.MethodDeclaration,
+  checker: ts.TypeChecker,
+): boolean {
+  return hasDecorator(
+    method,
+    checker,
+    new Set(['Redirect']),
+    NEST_COMMON_PACKAGE,
+  );
+}
+
+/**
+ * True when any `@nestjs/swagger` response decorator is already on the method.
+ *
+ * Landing on a real status means sharing a response key with such a decorator, and the merge is
+ * destructive in a way source order cannot fix: `ApiResponse` merges incoming over existing, then
+ * `ResponseObjectFactory` short-circuits on `standardSchema` and omits `type`, so a hand-written
+ * `@ApiOkResponse({ type: LegacyDto })` loses `LegacyDto` with no diagnostic. Backing off is the
+ * only correct answer — and it is what the inference path already does through
+ * `hasExplicitContract`.
+ *
+ * This is deliberately coarser than the inference path's check: it backs off for ANY swagger
+ * response decorator, including a description-only one that would have merged harmlessly. Coarse
+ * costs a schema that could have been documented; precise costs a refactor of
+ * `analyzeSwaggerResponseMetadata`, whose five error strings and their ordering are pinned by
+ * tests. Cheap and safe beats clever here.
+ */
+function hasSwaggerResponseDecorator(
+  method: ts.MethodDeclaration,
+  checker: ts.TypeChecker,
+): boolean {
+  const names = new Set(['ApiResponse', ...SWAGGER_RESPONSE_STATUS.keys()]);
+  return hasDecorator(method, checker, names, NEST_SWAGGER_PACKAGE);
 }
 
 function hasDecorator(

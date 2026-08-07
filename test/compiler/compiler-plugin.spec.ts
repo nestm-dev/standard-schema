@@ -423,6 +423,12 @@ export class ProductsController {
   withOptions() {
     return { id: 3, name: 'Options', publishedAt: new Date() };
   }
+
+  @Post('created')
+  @StandardSchemaResponse(ProductResponseDto)
+  created() {
+    return { id: 4, name: 'Created', publishedAt: new Date() };
+  }
 }
 `,
       },
@@ -432,9 +438,15 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
 
-    // Upgraded, and the runtime-only form is gone from that route.
+    // Upgraded WITH a status, and the runtime-only form is gone from that route. The status is
+    // what keeps the schema off the `default` response key, where generators read it as the error
+    // type and leave the success response untyped.
     expect(javascript).toContain(
-      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto)',
+      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto, { status: 200 })',
+    );
+    // @Post carries Nest's 201, matching what the inference path derives.
+    expect(javascript).toContain(
+      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto, { status: 201 })',
     );
 
     // A hand-written swagger decorator is authoritative and must not be duplicated.
@@ -453,6 +465,141 @@ export class ProductsController {
     expect(javascript).not.toContain(
       'ApiStandardSchemaResponse(ProductResponseDto, { validateOptions: {} })',
     );
+  });
+
+  it('never guesses a status it cannot know, and never fails the build for it', () => {
+    // Every case here backs off to the untouched runtime decorator. That is a SAFE fallback:
+    // with no response metadata at all, @nestjs/swagger's explorer emits the correct 200/201 key
+    // itself. The `default` key is what suppresses that fallback, which is why "skip the rewrite"
+    // is the right escape hatch and "rewrite without a status" is not.
+    const result = compileFixture(
+      {
+        'product.dto.ts': responseDtoSource,
+        'products.controller.ts': `
+import {
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  HttpStatus,
+  Redirect,
+  Res,
+} from '@nestjs/common';
+import { ApiOkResponse } from '@nestjs/swagger';
+import { StandardSchemaResponse } from '@nestm/standard-schema';
+import { ProductResponseDto, OtherProductResponseDto } from './product.dto.js';
+
+declare const RUNTIME_STATUS: number;
+
+@Controller('products')
+export class ProductsController {
+  @Get('raw')
+  @StandardSchemaResponse(ProductResponseDto)
+  raw(@Res() _response: unknown) {
+    return { id: 1, name: 'Raw', publishedAt: new Date() };
+  }
+
+  @Get('redirect')
+  @Redirect('https://example.com', 301)
+  @StandardSchemaResponse(ProductResponseDto)
+  redirect() {
+    return { id: 2, name: 'Redirect', publishedAt: new Date() };
+  }
+
+  @Delete('no-content')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  @StandardSchemaResponse(ProductResponseDto)
+  noContent() {
+    return { id: 3, name: 'NoContent', publishedAt: new Date() };
+  }
+
+  @Get('dynamic-status')
+  @HttpCode(RUNTIME_STATUS)
+  @StandardSchemaResponse(ProductResponseDto)
+  dynamicStatus() {
+    return { id: 4, name: 'Dynamic', publishedAt: new Date() };
+  }
+
+  @Get('already-swaggered')
+  @ApiOkResponse({ type: OtherProductResponseDto, description: 'Hand written.' })
+  @StandardSchemaResponse(ProductResponseDto)
+  alreadySwaggered() {
+    return { id: 5, name: 'Swaggered', publishedAt: new Date() };
+  }
+}
+`,
+      },
+      { pluginOptions: { swagger: true } },
+    );
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    // A dynamic @HttpCode must not fail the build. These methods are invisible to preflight
+    // (it skips anything carrying an explicit response decorator), so a throw would escape
+    // mid-transform, unaggregated, telling the author to add a decorator they already have.
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+
+    // Not one of the five was rewritten.
+    expect(javascript).not.toContain('ApiStandardSchemaResponse');
+    expect(
+      countOccurrences(
+        javascript,
+        'StandardSchemaResponse(ProductResponseDto)',
+      ),
+    ).toBe(5);
+
+    // And the hand-written Swagger contract survives intact. Sharing its response key would let
+    // ResponseObjectFactory's standardSchema short-circuit drop `type` — silently, and in a way
+    // decorator order cannot fix.
+    expect(javascript).toContain('type: OtherProductResponseDto');
+  });
+
+  it('derives the status the same way the inference path does', () => {
+    const result = compileFixture(
+      {
+        'product.dto.ts': responseDtoSource,
+        'products.controller.ts': `
+import { Controller, Get, HttpCode, HttpStatus, Patch, Post } from '@nestjs/common';
+import { StandardSchemaResponse } from '@nestm/standard-schema';
+import { ProductResponseDto } from './product.dto.js';
+
+@Controller('products')
+export class ProductsController {
+  @Get('read')
+  @StandardSchemaResponse(ProductResponseDto)
+  read() {
+    return { id: 1, name: 'Read', publishedAt: new Date() };
+  }
+
+  @Post('create')
+  @StandardSchemaResponse(ProductResponseDto)
+  create() {
+    return { id: 2, name: 'Create', publishedAt: new Date() };
+  }
+
+  @Patch('update')
+  @StandardSchemaResponse(ProductResponseDto)
+  update() {
+    return { id: 3, name: 'Update', publishedAt: new Date() };
+  }
+
+  @Get('accepted')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @StandardSchemaResponse(ProductResponseDto)
+  accepted() {
+    return { id: 4, name: 'Accepted', publishedAt: new Date() };
+  }
+}
+`,
+      },
+      { pluginOptions: { swagger: true } },
+    );
+    const javascript = getOutput(result.emitted, 'products.controller.js');
+
+    expect(formatDiagnostics(result.diagnostics)).toBe('');
+    // @Get and @Patch -> 200, @Post -> 201, @HttpCode wins over the verb.
+    expect(countOccurrences(javascript, '{ status: 200 }')).toBe(2);
+    expect(countOccurrences(javascript, '{ status: 201 }')).toBe(1);
+    expect(countOccurrences(javascript, '{ status: 202 }')).toBe(1);
   });
 
   it('leaves StandardSchemaResponse alone when swagger output is disabled', () => {
