@@ -227,6 +227,24 @@ Explicit `@StandardSchemaResponse(...)`,
 always win, whether placed on the method or controller. DTO classes and raw
 Standard Schema objects are accepted by the explicit decorators.
 
+With `swagger: true`, a method carrying a single-argument
+`@StandardSchemaResponse(Source)` is rewritten to
+`@ApiStandardSchemaResponse(Source, { status })`, so its schema is documented
+under the real success status rather than the `default` response key. The status
+is derived exactly as inference derives it: `@HttpCode` wins, otherwise `@Post`
+is 201 and every other verb is 200.
+
+The rewrite backs off — leaving your decorator untouched — whenever the status
+cannot be known or the entry would collide: a raw `@Res()` parameter, a
+`@Redirect()` route, `@HttpCode(204)`, a status that is not statically
+resolvable, or any `@nestjs/swagger` response decorator already on the method.
+Backing off is safe: with no response metadata, Swagger's own explorer emits the
+correct status key for you.
+
+**Pass `{ status }` when you write `@ApiStandardSchemaResponse` by hand.**
+Without it the schema lands on `default`, which most client generators read as
+the error type — leaving the success response untyped.
+
 When Swagger is installed, the composite decorator is also available from its
 optional subpath:
 
