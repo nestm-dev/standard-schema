@@ -11,6 +11,7 @@
     "fix-alpha-publish",
     "infer-native-responses",
     "initial-release",
+    "rewrite-response-status",
     "share-swagger-array-markers",
     "swagger-native-metadata"
   ]
