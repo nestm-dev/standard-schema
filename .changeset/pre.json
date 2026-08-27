@@ -1,18 +1,4 @@
 {
   "mode": "pre",
-  "tag": "alpha",
-  "initialVersions": {
-    "@nestm/standard-schema": "0.1.0-alpha.0",
-    "@nestm/example-nest-cli-zod": "0.0.0"
-  },
-  "changesets": [
-    "document-alpha-install",
-    "document-explicit-standard-schema-response",
-    "fix-alpha-publish",
-    "infer-native-responses",
-    "initial-release",
-    "rewrite-response-status",
-    "share-swagger-array-markers",
-    "swagger-native-metadata"
-  ]
+  "tag": "alpha"
 }

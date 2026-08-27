@@ -3,7 +3,7 @@
 DTO ergonomics for NestJS 12's native [Standard Schema](https://standardschema.dev/) validation and serialization.
 
 > [!CAUTION]
-> NestJS 12 is currently prerelease software. This package is experimental and may change as Nest's native Standard Schema API stabilizes.
+> This package is still prerelease software. Its API may change before the first stable release.
 
 `@nestm/standard-schema` connects runtime DTO classes to the Standard Schema support built into NestJS 12. It is schema-vendor-neutral: Zod is used in the examples, but the library API accepts Standard Schema-compatible schemas.
 
@@ -54,7 +54,7 @@ Install the package alongside NestJS 12 and a Standard Schema implementation:
 
 ```sh
 pnpm add @nestm/standard-schema@alpha
-pnpm add @nestjs/common@12.0.0-alpha.5 @nestjs/core@12.0.0-alpha.5
+pnpm add @nestjs/common@12.0.1 @nestjs/core@12.0.1
 pnpm add reflect-metadata rxjs
 ```
 
@@ -64,19 +64,14 @@ For the Zod examples:
 pnpm add zod@4.4.3
 ```
 
-OpenAPI integration is optional. Install the matching Nest Swagger prerelease
-only when using `@nestm/standard-schema/swagger` or compiler
-`"swagger": true`:
+OpenAPI integration is optional. Install Nest Swagger 12 only when using
+`@nestm/standard-schema/swagger` or compiler `"swagger": true`:
 
 ```sh
-pnpm add @nestjs/swagger@12.0.0-alpha.2
+pnpm add @nestjs/swagger@12.0.0
 ```
 
-The commands show the NestJS prerelease used by this package's test suite. Pin the exact framework versions you test instead of leaving a floating prerelease tag in `package.json`.
-
-NestJS 12 alpha packages currently declare some Nest 11 peer ranges internally. Package managers may therefore report peer warnings even when every Nest package is pinned to the same 12 alpha. Those warnings originate in the upstream prerelease package metadata rather than this adapter.
-
-The same upstream mismatch can make npm stop with `ERESOLVE`. For this alpha combination, install with `npm install --legacy-peer-deps` or use pnpm and review its warnings. Remove that workaround once NestJS 12 publishes corrected peer ranges.
+The commands show the stable NestJS versions used by this package's test suite.
 
 ## Quick start
 
@@ -266,18 +261,15 @@ It combines native runtime serialization with `@nestjs/swagger`
 directly for Standard Schema implementations that expose the Standard JSON
 Schema converter.
 
-Nest Swagger 12 alpha.2 does not apply `isArray` after a custom
-`standardSchemaConverter`. Wrap that converter once when creating the document
-so converter-only schemas retain their response array shape and components:
+Nest Swagger 12 stable applies `isArray` after a custom
+`standardSchemaConverter`, so converter-only schemas retain their response
+array shape and components without an adapter:
 
 ```ts
 import { SwaggerModule } from '@nestjs/swagger';
-import { withStandardSchemaResponseArrays } from '@nestm/standard-schema/swagger';
 
 const document = SwaggerModule.createDocument(app, config, {
-  standardSchemaConverter: withStandardSchemaResponseArrays(
-    standardSchemaConverter,
-  ),
+  standardSchemaConverter,
 });
 ```
 
@@ -557,12 +549,12 @@ erased interfaces, aliases, or structural types.
 
 ## Compatibility
 
-- NestJS 12 prereleases
+- NestJS 12
 - Node.js 22.12 or newer
 - Standard Schema-compatible schema libraries
 - TypeScript 5.5 through 6.x when the optional compiler plugin is enabled
 
-Because NestJS 12 is still in alpha, keep package and framework versions pinned in applications and review release notes before upgrading.
+Review NestJS and package release notes before upgrading production applications.
 
 ## Upstream references
 

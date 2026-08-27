@@ -2,7 +2,7 @@
 
 ## Supported versions
 
-Until the first stable release, security fixes are made against the latest published prerelease. Users should upgrade to the newest available version and pin the exact version they have tested with their NestJS 12 prerelease.
+Until the first stable package release, security fixes are made against the latest published prerelease. Users should upgrade to the newest available version and use a supported stable NestJS 12 release.
 
 After stable releases begin, this policy will be updated with an explicit support table.
 

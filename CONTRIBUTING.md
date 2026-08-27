@@ -2,7 +2,7 @@
 
 Thank you for helping improve `@nestm/standard-schema`.
 
-The project follows NestJS 12's prerelease Standard Schema API. Changes should keep the core integration schema-vendor-neutral and should delegate parsing to Nest's native Standard Schema components.
+The project follows NestJS 12's stable Standard Schema API. Changes should keep the core integration schema-vendor-neutral and should delegate parsing to Nest's native Standard Schema components.
 
 ## Prerequisites
 
