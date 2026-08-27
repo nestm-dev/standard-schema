@@ -1,5 +1,13 @@
 # @nestm/standard-schema
 
+## 0.1.0-alpha.9
+
+### Patch Changes
+
+- c78ae41: Support stable NestJS 12 and Nest Swagger 12, including native array response
+  shaping after custom Standard Schema conversion, and refresh development
+  dependencies to their current stable releases.
+
 ## 0.1.0-alpha.8
 
 ### Minor Changes
