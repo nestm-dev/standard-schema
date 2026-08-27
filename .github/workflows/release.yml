@@ -28,7 +28,7 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm }
       # The release script delegates publishing to pnpm. Native OIDC publishing
-      # requires pnpm >= 11.11; packageManager currently pins 11.20.0.
+      # requires pnpm >= 11.11; packageManager currently pins 11.24.0.
       - name: Assert pnpm supports native OIDC publishing
         run: |
           node -e '
@@ -43,13 +43,14 @@ jobs:
       - run: pnpm run test
       - name: Create release PR or publish to npm
         id: changesets
-        uses: changesets/action@v1
+        uses: changesets/action@8488615a623b1b9c987934bb89eae8af6a946ac1 # v2.1.1
         with:
-          publish: pnpm run release
-          version: pnpm changeset version
-          title: 'chore: release @nestm/standard-schema'
-          commit: 'chore: release @nestm/standard-schema'
-          createGithubReleases: true
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          publish-script: pnpm run release
+          version-script: pnpm changeset version
+          pr-title: 'chore: release @nestm/standard-schema'
+          commit-message: 'chore: release @nestm/standard-schema'
+          create-github-releases: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       # Changesets pushes tags only after a successful npm publish. Reconcile

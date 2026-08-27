@@ -1,10 +1,7 @@
 import 'reflect-metadata';
 
 import { DECORATORS } from '@nestjs/swagger';
-import type {
-  StandardJSONSchemaV1,
-  StandardSchemaV1,
-} from '@standard-schema/spec';
+import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
 import { createStandardSchemaResponseDto } from '../create-standard-schema-response-dto.js';
@@ -72,7 +69,7 @@ describe(ApiStandardSchemaResponse.name, () => {
           readonly publishedAt: string;
         };
         readonly isArray: boolean;
-        readonly standardSchema: StandardJSONSchemaV1;
+        readonly standardSchema: StandardSchemaV1;
       };
     };
 
@@ -84,16 +81,7 @@ describe(ApiStandardSchemaResponse.name, () => {
       },
       isArray: true,
     });
-    expect(
-      swaggerMetadata[201].standardSchema['~standard'].jsonSchema.output({
-        target: 'openapi-3.0',
-      }),
-    ).toMatchObject({
-      items: {
-        type: 'object',
-      },
-      type: 'array',
-    });
+    expect(swaggerMetadata[201].standardSchema).toBe(ProductResponseSchema);
   });
 
   it('supports class-level defaults and a raw Standard Schema', () => {
@@ -132,7 +120,7 @@ describe(ApiStandardSchemaResponse.name, () => {
     });
   });
 
-  it('wraps custom converter array results and preserves components', () => {
+  it('leaves custom converter array shaping to Nest Swagger', () => {
     class TestController {
       @ApiStandardSchemaResponse(ConverterOnlyProductSchema, {
         isArray: true,
@@ -176,10 +164,7 @@ describe(ApiStandardSchemaResponse.name, () => {
     ).toEqual({
       components,
       schema: {
-        items: {
-          $ref: '#/components/schemas/Product',
-        },
-        type: 'array',
+        $ref: '#/components/schemas/Product',
       },
     });
     expect(converter).toHaveBeenCalledWith(ConverterOnlyProductSchema, {
@@ -187,7 +172,7 @@ describe(ApiStandardSchemaResponse.name, () => {
     });
   });
 
-  it('recognizes array metadata created by another installed package copy', () => {
+  it('unwraps legacy array metadata created by another installed package copy', () => {
     const converter = vi.fn(() => ({ schema: { type: 'object' } }));
     const wrappedConverter = withStandardSchemaResponseArrays(converter);
     const duplicateCopySchema = {
@@ -199,7 +184,7 @@ describe(ApiStandardSchemaResponse.name, () => {
     expect(
       wrappedConverter(duplicateCopySchema, { schemaType: 'output' }),
     ).toEqual({
-      schema: { items: { type: 'object' }, type: 'array' },
+      schema: { type: 'object' },
     });
     expect(converter).toHaveBeenCalledWith(ConverterOnlyProductSchema, {
       schemaType: 'output',

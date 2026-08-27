@@ -13,6 +13,15 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exampleRoot = join(projectRoot, 'examples', 'nest-cli-zod');
+const rootPackageJson = JSON.parse(
+  readFileSync(join(projectRoot, 'package.json'), 'utf8'),
+);
+const packageManager = rootPackageJson.packageManager;
+
+if (typeof packageManager !== 'string' || !packageManager.startsWith('pnpm@')) {
+  throw new Error('The root packageManager must pin pnpm.');
+}
+
 const temporaryRoot = mkdtempSync(
   join(tmpdir(), 'nestm-standard-schema-consumer-'),
 );
@@ -20,7 +29,7 @@ const consumerRoot = join(temporaryRoot, 'consumer');
 const tarballPath = join(temporaryRoot, 'standard-schema.tgz');
 
 try {
-  run('pnpm', ['pack', '--out', tarballPath], projectRoot);
+  runPnpm(['pack', '--out', tarballPath], projectRoot);
   cpSync(exampleRoot, consumerRoot, {
     recursive: true,
     filter: shouldCopyExamplePath,
@@ -28,28 +37,21 @@ try {
 
   const packagePath = join(consumerRoot, 'package.json');
   const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
-  const rootPackageJson = JSON.parse(
-    readFileSync(join(projectRoot, 'package.json'), 'utf8'),
-  );
-
   packageJson.dependencies['@nestm/standard-schema'] = `file:${tarballPath}`;
   synchronizeDependencyVersions(packageJson, rootPackageJson);
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   writeStandaloneWorkspaceConfig(consumerRoot);
   writePluginDisabledConfigs(consumerRoot);
 
-  run(
-    'pnpm',
+  runPnpm(
     ['install', '--no-frozen-lockfile', '--prefer-offline', '--ignore-scripts'],
     consumerRoot,
   );
-  run(
-    'pnpm',
+  runPnpm(
     ['exec', 'nest', 'build', '--config', 'nest-cli.json', '--builder', 'tsc'],
     consumerRoot,
   );
-  run(
-    'pnpm',
+  runPnpm(
     [
       'exec',
       'nest',
@@ -102,12 +104,6 @@ function writeStandaloneWorkspaceConfig(root) {
     join(root, 'pnpm-workspace.yaml'),
     `packages:
   - '.'
-
-peerDependencyRules:
-  allowedVersions:
-    '@nestjs/common': '12'
-    '@nestjs/core': '12'
-    '@nestjs/platform-express': '12'
 
 overrides:
   multer: '2.2.0'
@@ -203,8 +199,9 @@ export class AmbiguousController {
 
   try {
     const result = spawnSync(
-      'pnpm',
+      'corepack',
       [
+        packageManager,
         'exec',
         'nest',
         'build',
@@ -300,4 +297,8 @@ function run(command, arguments_, cwd, environment = {}) {
     },
     stdio: 'inherit',
   });
+}
+
+function runPnpm(arguments_, cwd, environment = {}) {
+  run('corepack', [packageManager, ...arguments_], cwd, environment);
 }

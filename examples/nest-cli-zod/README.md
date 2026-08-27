@@ -88,5 +88,4 @@ the published alpha:
 pnpm add @nestm/standard-schema@alpha
 ```
 
-Keep the exact NestJS prerelease versions aligned with the versions supported
-by the package.
+Keep NestJS on a supported stable 12.x release.

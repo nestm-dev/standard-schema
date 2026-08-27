@@ -59,7 +59,7 @@ jobs:
       - run: pnpm run test
         env: { CI: 'true' }
 
-  # Non-blocking early warning for changes in Nest's prerelease API.
+  # Non-blocking early warning for changes in newer NestJS releases.
   canary:
     runs-on: ubuntu-latest
     continue-on-error: true
@@ -72,7 +72,7 @@ jobs:
       - uses: actions/setup-node@v7
         with: { node-version: 24, cache: pnpm }
       - run: pnpm install --no-frozen-lockfile
-      - run: pnpm up "@nestjs/*@next"
+      - run: pnpm up "@nestjs/*@latest"
       - run: pnpm run test
 
   # Non-blocking early warning for TypeScript compiler API changes.
@@ -90,18 +90,3 @@ jobs:
       - run: pnpm install --no-frozen-lockfile
       - run: pnpm up typescript@next
       - run: pnpm run test
-
-  # Warns when Nest 12 fixes its stale ^11 sibling peer declarations.
-  npm-peer-smoke:
-    runs-on: ubuntu-latest
-    if: github.event_name != 'pull_request'
-    steps:
-      - uses: actions/setup-node@v7
-        with: { node-version: 24 }
-      - run: |
-          mkdir smoke && cd smoke && npm init -y > /dev/null
-          if npm install @nestjs/common@next @nestjs/core@next @nestjs/platform-express@next reflect-metadata rxjs --no-audit --no-fund; then
-            echo "::warning::Nest 12 alpha sibling peers appear fixed — remove the ERESOLVE workarounds from pnpm-workspace.yaml and README."
-          else
-            echo "npm ERESOLVE still present (expected while Nest 12 alphas declare ^11 sibling peers)."
-          fi
