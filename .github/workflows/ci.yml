@@ -59,6 +59,19 @@ jobs:
       - run: pnpm run test
         env: { CI: 'true' }
 
+  typescript-7:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/setup@v2
+        with:
+          install: false
+      - uses: actions/setup-node@v7
+        with: { node-version: 24, cache: pnpm }
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm run test:typescript7
+        env: { CI: 'true' }
+
   # Non-blocking early warning for changes in newer NestJS releases.
   canary:
     runs-on: ubuntu-latest

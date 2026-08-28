@@ -115,7 +115,10 @@ pnpm run example:test
 installs the actual tarball into an isolated copy of
 [`examples/nest-cli-zod`](./examples/nest-cli-zod) and verifies both
 plugin-enabled and plugin-disabled builds. `test:packed` remains an alias for
-that command. The aggregate `pnpm run test` command runs all four suites.
+that command. `test:typescript7` verifies the packed runtime integration with
+TypeScript 7 and the explicit compiler-plugin compatibility error. The
+aggregate `pnpm run test` command runs the four TypeScript 6 suites; CI runs the
+TypeScript 7 consumer separately.
 
 ## Pull requests
 
