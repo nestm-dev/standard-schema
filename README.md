@@ -397,6 +397,12 @@ through those paths.
 
 The normal package entry is ESM. Only the compiler subpath is CommonJS for the Nest CLI loader, and it is isolated from the runtime entry so applications that do not enable the plugin do not load TypeScript. Continue using `.js` suffixes for local imports in NodeNext ESM source.
 
+The compiler plugin requires the JavaScript compiler API exposed by TypeScript
+5.5 through 6.x. TypeScript 7 uses the native compiler and does not expose that
+API, so TypeScript 7 applications should omit the plugin and use explicit
+`@StandardSchemaResponse(...)` metadata. The runtime DTO, validation, and
+serialization integrations support TypeScript 7.
+
 ## API
 
 ### `createStandardSchemaDto(schema)`
@@ -552,6 +558,7 @@ erased interfaces, aliases, or structural types.
 - NestJS 12
 - Node.js 22.12 or newer
 - Standard Schema-compatible schema libraries
+- TypeScript 5.5 through 7.x for runtime DTO, validation, and serialization APIs
 - TypeScript 5.5 through 6.x when the optional compiler plugin is enabled
 
 Review NestJS and package release notes before upgrading production applications.

@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const exampleRoot = join(projectRoot, 'examples', 'nest-cli-zod');
+const typescript7Mode = process.argv.includes('--typescript-7');
 const rootPackageJson = JSON.parse(
   readFileSync(join(projectRoot, 'package.json'), 'utf8'),
 );
@@ -39,6 +40,11 @@ try {
   const packageJson = JSON.parse(readFileSync(packagePath, 'utf8'));
   packageJson.dependencies['@nestm/standard-schema'] = `file:${tarballPath}`;
   synchronizeDependencyVersions(packageJson, rootPackageJson);
+
+  if (typescript7Mode) {
+    packageJson.devDependencies.typescript = '7.0.2';
+  }
+
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
   writeStandaloneWorkspaceConfig(consumerRoot);
   writePluginDisabledConfigs(consumerRoot);
@@ -47,32 +53,81 @@ try {
     ['install', '--no-frozen-lockfile', '--prefer-offline', '--ignore-scripts'],
     consumerRoot,
   );
-  runPnpm(
-    ['exec', 'nest', 'build', '--config', 'nest-cli.json', '--builder', 'tsc'],
-    consumerRoot,
-  );
-  runPnpm(
-    [
-      'exec',
-      'nest',
-      'build',
-      '--config',
-      'nest-cli.no-plugin.json',
-      '--builder',
-      'tsc',
-    ],
-    consumerRoot,
-  );
+  if (typescript7Mode) {
+    runPnpm(['peers', 'check'], consumerRoot);
+    runPnpm(
+      ['exec', 'tsc', '--project', 'tsconfig.no-plugin.json'],
+      consumerRoot,
+    );
+    run('node', ['test/smoke.mjs'], consumerRoot, {
+      EXAMPLE_OUTPUT_DIRECTORY: 'dist-no-plugin',
+      EXAMPLE_PLUGIN_ENABLED: 'false',
+    });
+    verifyTypeScript7PluginBoundary(consumerRoot);
+  } else {
+    runPnpm(
+      [
+        'exec',
+        'nest',
+        'build',
+        '--config',
+        'nest-cli.json',
+        '--builder',
+        'tsc',
+      ],
+      consumerRoot,
+    );
+    runPnpm(
+      [
+        'exec',
+        'nest',
+        'build',
+        '--config',
+        'nest-cli.no-plugin.json',
+        '--builder',
+        'tsc',
+      ],
+      consumerRoot,
+    );
 
-  assertCompilerOutput(consumerRoot);
-  run('node', ['test/smoke.mjs'], consumerRoot);
-  run('node', ['test/smoke.mjs'], consumerRoot, {
-    EXAMPLE_OUTPUT_DIRECTORY: 'dist-no-plugin',
-    EXAMPLE_PLUGIN_ENABLED: 'false',
-  });
-  verifyPackedAmbiguity(consumerRoot);
+    assertCompilerOutput(consumerRoot);
+    run('node', ['test/smoke.mjs'], consumerRoot);
+    run('node', ['test/smoke.mjs'], consumerRoot, {
+      EXAMPLE_OUTPUT_DIRECTORY: 'dist-no-plugin',
+      EXAMPLE_PLUGIN_ENABLED: 'false',
+    });
+    verifyPackedAmbiguity(consumerRoot);
+  }
 } finally {
   rmSync(temporaryRoot, { force: true, recursive: true });
+}
+
+function verifyTypeScript7PluginBoundary(root) {
+  const result = spawnSync(
+    'node',
+    [
+      '-e',
+      `const plugin = require('@nestm/standard-schema/plugin'); plugin.before();`,
+    ],
+    {
+      cwd: root,
+      encoding: 'utf8',
+      env: process.env,
+    },
+  );
+  const output = `${result.stdout ?? ''}\n${result.stderr ?? ''}`;
+
+  if (result.status === 0) {
+    throw new Error(
+      'The compiler plugin unexpectedly accepted the TypeScript 7 compiler API.',
+    );
+  }
+
+  if (!output.includes('requires the TypeScript 5.5 or 6.x compiler API')) {
+    throw new Error(
+      `The TypeScript 7 plugin boundary failed for an unexpected reason:\n${output}`,
+    );
+  }
 }
 
 function shouldCopyExamplePath(source) {

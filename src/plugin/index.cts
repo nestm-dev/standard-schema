@@ -121,6 +121,8 @@ function before(
   rawOptions: Record<string, unknown> = {},
   program?: ts.Program,
 ): ts.TransformerFactory<ts.SourceFile> {
+  assertCompilerApiSupport();
+
   const options = parseOptions(rawOptions);
 
   if (program === undefined) {
@@ -148,6 +150,29 @@ function before(
       return transformControllerFile(sourceFile, context, checker, options);
     };
   };
+}
+
+function assertCompilerApiSupport(): void {
+  const compiler = ts as unknown as {
+    readonly canHaveDecorators?: unknown;
+    readonly factory?: unknown;
+    readonly version?: unknown;
+  };
+
+  if (
+    typeof compiler.canHaveDecorators === 'function' &&
+    typeof compiler.factory === 'object' &&
+    compiler.factory !== null
+  ) {
+    return;
+  }
+
+  const version =
+    typeof compiler.version === 'string' ? ` ${compiler.version}` : '';
+
+  throw new Error(
+    `${PACKAGE_NAME}/plugin requires the TypeScript 5.5 or 6.x compiler API; detected TypeScript${version}, which does not expose that API. TypeScript 7 applications can use the runtime DTO integration with explicit response metadata instead.`,
+  );
 }
 
 function preflightProgram(

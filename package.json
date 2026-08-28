@@ -71,6 +71,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "vitest run --config ./vitest.config.e2e.ts",
     "test:packed": "pnpm run example:test",
+    "test:typescript7": "node scripts/test-packed-consumer.mjs --typescript-7",
     "example:build": "pnpm run build && pnpm --filter @nestm/example-nest-cli-zod build",
     "example:start": "pnpm run example:build && pnpm --filter @nestm/example-nest-cli-zod start",
     "example:test": "node scripts/test-packed-consumer.mjs",
@@ -89,7 +90,7 @@
     "@nestjs/swagger": "^12.0.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
-    "typescript": ">=5.5 <7"
+    "typescript": ">=5.5 <8"
   },
   "peerDependenciesMeta": {
     "@nestjs/swagger": {
