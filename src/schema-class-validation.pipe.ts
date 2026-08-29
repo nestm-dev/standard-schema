@@ -4,21 +4,22 @@ import {
   type ArgumentMetadata,
 } from '@nestjs/common';
 
-import { isStandardSchemaDto } from './schema.js';
+import { isResponseSchemaClass, isSchemaClass } from './schema.js';
 
 /**
- * Adds DTO-carried schemas to Nest argument metadata, then delegates parsing
- * and error handling to Nest's native `StandardSchemaValidationPipe`.
+ * Discovers a Standard Schema from a reflected schema class, then delegates
+ * parsing and error handling to Nest's native validation pipe.
  */
 @Injectable()
-export class StandardSchemaDtoValidationPipe extends StandardSchemaValidationPipe {
+export class SchemaClassValidationPipe extends StandardSchemaValidationPipe {
   override transform<T = unknown>(
     value: T,
     metadata: ArgumentMetadata,
   ): Promise<T> {
     const schema =
       metadata.schema ??
-      (isStandardSchemaDto(metadata.metatype)
+      (isSchemaClass(metadata.metatype) ||
+      isResponseSchemaClass(metadata.metatype)
         ? metadata.metatype.schema
         : undefined);
 

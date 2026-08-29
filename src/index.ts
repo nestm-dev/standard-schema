@@ -1,17 +1,17 @@
-export { createStandardSchemaDto } from './create-standard-schema-dto.js';
-export { createStandardSchemaResponseDto } from './create-standard-schema-response-dto.js';
+export { createResponseSchemaClass } from './create-response-schema-class.js';
+export { createSchemaClass } from './create-schema-class.js';
 export {
   getStandardSchema,
+  isResponseSchemaClass,
+  isSchemaClass,
   isStandardSchema,
-  isStandardSchemaDto,
-  isStandardSchemaResponseDto,
-  STANDARD_SCHEMA_DTO,
-  STANDARD_SCHEMA_RESPONSE_DTO,
-  type StandardSchemaDtoClass,
-  type StandardSchemaResponseDtoClass,
+  STANDARD_SCHEMA_CLASS,
+  STANDARD_SCHEMA_RESPONSE_CLASS,
+  type ResponseSchemaClass,
+  type SchemaClass,
   type StandardSchemaSource,
 } from './schema.js';
-export { StandardSchemaDtoValidationPipe } from './standard-schema-dto-validation.pipe.js';
+export { SchemaClassValidationPipe } from './schema-class-validation.pipe.js';
 export {
   StandardSchemaResponse,
   type StandardSchemaResponseOptions,

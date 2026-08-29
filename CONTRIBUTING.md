@@ -69,14 +69,14 @@ After that one-time setup, merge the Changesets release pull request to let GitH
 
 ## Design guidelines
 
-- Preserve the native integration boundary: DTO metadata may select a schema, but Nest's native validation pipe and serializer should parse values.
+- Preserve the native integration boundary: explicit metadata or a schema class may select a schema, but Nest's native validation pipe and serializer should parse values.
 - Keep public APIs compatible with any implementation of Standard Schema.
 - Do not add a runtime dependency on Zod for core behavior. Zod can be used in examples and tests.
-- Keep request DTOs output-oriented: controller parameters receive `StandardSchemaV1.InferOutput<Schema>`.
-- Keep response DTOs input-oriented: handlers return `StandardSchemaV1.InferInput<Schema>`, and clients receive `StandardSchemaV1.InferOutput<Schema>`.
-- Use concrete runtime DTO classes where reflection is required. Runtime request discovery cannot recover aliases or interfaces.
-- Keep response inference build-time and opt-in. It may unwrap supported `Promise` and array annotations only when the TypeScript compiler plugin has a concrete response-branded DTO.
-- Let explicit `@StandardSchemaResponse(...)` or `@SerializeOptions(...)` metadata win. Ambiguous response DTO contracts should fail by default or honor the configured skip behavior.
+- Keep request schema classes output-oriented: controller parameters receive `StandardSchemaV1.InferOutput<Schema>`.
+- Keep response schema classes input-oriented: handlers return `StandardSchemaV1.InferInput<Schema>`, and clients receive `StandardSchemaV1.InferOutput<Schema>`.
+- Treat raw schemas as the primary contract. Use concrete schema classes only where runtime reflection improves ergonomics; runtime discovery cannot recover erased aliases or interfaces.
+- Keep response inference build-time and opt-in. It may unwrap supported `Promise` and array annotations only when the TypeScript compiler plugin has a concrete response schema class.
+- Let explicit `@StandardSchemaResponse(...)` or `@SerializeOptions(...)` metadata win. Ambiguous response schema-class contracts should fail by default or honor the configured skip behavior.
 - Keep the CommonJS compiler entry isolated from the ESM runtime entry. Runtime users should not load TypeScript merely by importing the package.
 - Include `.js` suffixes for local imports in TypeScript source compiled as Node ESM.
 
@@ -87,7 +87,7 @@ Tests should cover both type-level ergonomics and runtime behavior where applica
 - parsed request values reaching the controller;
 - coercions, defaults, and transforms;
 - response handler input types and serialized client output types;
-- `@Body()`, `@Query()`, and `@Param()` DTO discovery;
+- `@Body()`, `@Query()`, and `@Param()` schema-class discovery;
 - explicit native parameter schemas continuing to work;
 - object and array response serialization;
 - controller-level and method-level response schemas;

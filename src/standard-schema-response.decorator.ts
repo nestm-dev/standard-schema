@@ -8,8 +8,7 @@ export interface StandardSchemaResponseOptions {
 }
 
 /**
- * Attaches a raw or DTO-carried schema through Nest's native
- * `@SerializeOptions({ schema })` metadata.
+ * Attaches a Standard Schema through Nest's native serialization metadata.
  */
 export function StandardSchemaResponse(
   source: StandardSchemaSource,

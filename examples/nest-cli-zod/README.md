@@ -18,7 +18,7 @@ No response decorator is needed on the controller:
 
 ```ts
 @Get()
-findAll(@Query() query: ListProductsQueryDto): ProductResponseDto[] {
+findAll(@Query() query: ListProductsQuery): ProductResponse[] {
   return this.productsService.findAll(query);
 }
 ```
@@ -53,7 +53,7 @@ installs the tarball as a real dependency, builds it through the Nest CLI
 `tsc` builder, runs its HTTP and OpenAPI smoke tests, proves transforms and
 array responses at the artifact boundary, and verifies that an ambiguous
 response union fails the packed consumer build. It also performs a second
-build without the plugin to prove that request DTO discovery remains
+build without the plugin to prove that request schema-class discovery remains
 independent while automatic response serialization is opt-in.
 
 ## Try the API

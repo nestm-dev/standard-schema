@@ -1,6 +1,6 @@
 import {
-  createStandardSchemaDto,
-  createStandardSchemaResponseDto,
+  createSchemaClass,
+  createResponseSchemaClass,
 } from '@nestm/standard-schema';
 import { z } from 'zod';
 
@@ -10,9 +10,7 @@ const CreateProductSchema = z.object({
   active: z.boolean().default(true),
 });
 
-export class CreateProductDto extends createStandardSchemaDto(
-  CreateProductSchema,
-) {}
+export class CreateProduct extends createSchemaClass(CreateProductSchema) {}
 
 const ListProductsQuerySchema = z.object({
   search: z.string().trim().min(1).optional(),
@@ -21,7 +19,7 @@ const ListProductsQuerySchema = z.object({
   offset: z.coerce.number().int().nonnegative().default(0),
 });
 
-export class ListProductsQueryDto extends createStandardSchemaDto(
+export class ListProductsQuery extends createSchemaClass(
   ListProductsQuerySchema,
 ) {}
 
@@ -29,9 +27,7 @@ const ProductParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
-export class ProductParamsDto extends createStandardSchemaDto(
-  ProductParamsSchema,
-) {}
+export class ProductParams extends createSchemaClass(ProductParamsSchema) {}
 
 const DateToIsoStringSchema = z.codec(z.date(), z.iso.datetime(), {
   decode: (value) => value.toISOString(),
@@ -47,7 +43,7 @@ const ProductResponseSchema = z.object({
   updatedAt: DateToIsoStringSchema,
 });
 
-export class ProductResponseDto extends createStandardSchemaResponseDto(
+export class ProductResponse extends createResponseSchemaClass(
   ProductResponseSchema,
 ) {}
 
@@ -55,6 +51,6 @@ const ProductSummaryResponseSchema = z.object({
   count: z.number().int().nonnegative(),
 });
 
-export class ProductSummaryResponseDto extends createStandardSchemaResponseDto(
+export class ProductSummaryResponse extends createResponseSchemaClass(
   ProductSummaryResponseSchema,
 ) {}

@@ -70,7 +70,7 @@ interface DecoratorIdentity {
   readonly name: string;
 }
 
-interface DtoReference {
+interface SchemaClassReference {
   readonly classSymbol: ts.Symbol;
   readonly expression: ts.Expression;
 }
@@ -79,7 +79,7 @@ type ReturnAnalysis =
   | {
       readonly kind: 'infer';
       readonly isArray: boolean;
-      readonly reference: DtoReference;
+      readonly reference: SchemaClassReference;
       readonly status: number | undefined;
     }
   | {
@@ -90,7 +90,7 @@ type RequestAnalysis =
   | {
       readonly kind: 'infer';
       readonly decorator: ts.Decorator;
-      readonly reference: DtoReference;
+      readonly reference: SchemaClassReference;
     }
   | {
       readonly kind: 'skip';
@@ -171,7 +171,7 @@ function assertCompilerApiSupport(): void {
     typeof compiler.version === 'string' ? ` ${compiler.version}` : '';
 
   throw new Error(
-    `${PACKAGE_NAME}/plugin requires the TypeScript 5.5 or 6.x compiler API; detected TypeScript${version}, which does not expose that API. TypeScript 7 applications can use the runtime DTO integration with explicit response metadata instead.`,
+    `${PACKAGE_NAME}/plugin requires the TypeScript 5.5 or 6.x compiler API; detected TypeScript${version}, which does not expose that API. TypeScript 7 applications can use the runtime schema-class integration with explicit response metadata instead.`,
   );
 }
 
@@ -822,10 +822,10 @@ function analyzeRequestParameter(
   }
 
   const declaredType = unwrapResponseType(parameter.type);
-  const containsDto = containsRequestDto(declaredType, checker);
+  const containsSchemaClass = containsRequestSchemaClass(declaredType, checker);
 
   if (requestDecorators.length > 1) {
-    return containsDto
+    return containsSchemaClass
       ? ambiguousRequest(
           options,
           parameter,
@@ -839,7 +839,7 @@ function analyzeRequestParameter(
   const decorator = requestDecorators[0];
 
   if (decorator === undefined || !ts.isCallExpression(decorator.expression)) {
-    return containsDto
+    return containsSchemaClass
       ? ambiguousRequest(
           options,
           parameter,
@@ -859,7 +859,7 @@ function analyzeRequestParameter(
       firstArgument !== undefined &&
       isPropertyBoundRequestArgument(firstArgument, checker)
     ) {
-      return containsDto
+      return containsSchemaClass
         ? ambiguousRequest(
             options,
             parameter,
@@ -888,28 +888,28 @@ function analyzeRequestParameter(
     (ts.isTypeReferenceNode(declaredType) &&
       (declaredType.typeArguments?.length ?? 0) > 0)
   ) {
-    return containsDto
+    return containsSchemaClass
       ? ambiguousRequest(
           options,
           parameter,
           method,
           sourceFile,
-          'request unions, wrappers, tuples, and arrays require one concrete request DTO',
+          'request unions, wrappers, tuples, and arrays require one concrete request schema class',
         )
       : { kind: 'skip' };
   }
 
   const resolvedType = checker.getTypeFromTypeNode(declaredType);
-  const requestClassSymbol = getRequestDtoClassSymbol(resolvedType, checker);
+  const requestClassSymbol = getRequestSchemaClassSymbol(resolvedType, checker);
 
   if (requestClassSymbol === undefined) {
-    return containsDto
+    return containsSchemaClass
       ? ambiguousRequest(
           options,
           parameter,
           method,
           sourceFile,
-          'the request DTO cannot be reduced to one concrete runtime class',
+          'the request schema class cannot be reduced to one concrete runtime class',
         )
       : { kind: 'skip' };
   }
@@ -923,7 +923,7 @@ function analyzeRequestParameter(
       parameter,
       method,
       sourceFile,
-      'the request DTO cannot be referenced as a concrete runtime class',
+      'the request schema class cannot be referenced as a concrete runtime class',
     );
   }
 
@@ -942,7 +942,7 @@ function analyzeRequestParameter(
       parameter,
       method,
       sourceFile,
-      'the request DTO is type-only or cannot be referenced safely at runtime',
+      'the request schema class is type-only or cannot be referenced safely at runtime',
     );
   }
 
@@ -1002,7 +1002,7 @@ function ambiguousRequest(
 
   throw new Error(
     `${PACKAGE_NAME}/plugin: ${className}.${methodName}(${parameterName}): ${reason}. ` +
-      `Use a zero-argument @Body(), @Query(), or @Param() with one concrete request DTO, ` +
+      `Use a zero-argument @Body(), @Query(), or @Param() with one concrete request schema class, ` +
       `or add native { schema } metadata explicitly. ` +
       `(${sourceFile.fileName}:${position.line + 1}:${position.character + 1})`,
   );
@@ -1059,7 +1059,7 @@ function analyzeReturnType(
     promiseDepth > 1 ||
     arrayDepth > 1
   ) {
-    return containsResponseDto(current, checker)
+    return containsResponseSchemaClass(current, checker)
       ? ambiguous(
           options,
           method,
@@ -1074,29 +1074,29 @@ function analyzeReturnType(
   }
 
   if (ts.isUnionTypeNode(current)) {
-    return containsResponseDto(current, checker)
+    return containsResponseSchemaClass(current, checker)
       ? ambiguous(
           options,
           method,
           sourceFile,
-          'union response types require one concrete response DTO',
+          'union response types require one concrete response schema class',
         )
       : { kind: 'skip' };
   }
 
   if (ts.isIntersectionTypeNode(current)) {
-    return containsResponseDto(current, checker)
+    return containsResponseSchemaClass(current, checker)
       ? ambiguous(
           options,
           method,
           sourceFile,
-          'intersection response types require one concrete response DTO',
+          'intersection response types require one concrete response schema class',
         )
       : { kind: 'skip' };
   }
 
   if (ts.isTupleTypeNode(current)) {
-    return containsResponseDto(current, checker)
+    return containsResponseSchemaClass(current, checker)
       ? ambiguous(
           options,
           method,
@@ -1117,15 +1117,18 @@ function analyzeReturnType(
     );
   }
 
-  const responseClassSymbol = getResponseDtoClassSymbol(resolvedType, checker);
+  const responseClassSymbol = getResponseSchemaClassSymbol(
+    resolvedType,
+    checker,
+  );
 
   if (responseClassSymbol === undefined) {
-    if (containsResponseDtoInTypeArguments(current, checker)) {
+    if (containsResponseSchemaClassInTypeArguments(current, checker)) {
       return ambiguous(
         options,
         method,
         sourceFile,
-        'response envelopes and generic wrappers require one concrete response DTO',
+        'response envelopes and generic wrappers require one concrete response schema class',
       );
     }
 
@@ -1137,7 +1140,7 @@ function analyzeReturnType(
       options,
       method,
       sourceFile,
-      'the response DTO cannot be referenced as a concrete runtime class',
+      'the response schema class cannot be referenced as a concrete runtime class',
     );
   }
 
@@ -1155,7 +1158,7 @@ function analyzeReturnType(
       options,
       method,
       sourceFile,
-      'the response DTO is type-only or cannot be referenced safely at runtime',
+      'the response schema class is type-only or cannot be referenced safely at runtime',
     );
   }
 
@@ -1659,24 +1662,24 @@ function responseClassHasRuntimeDeclaration(
   );
 }
 
-function getResponseDtoClassSymbol(
+function getResponseSchemaClassSymbol(
   type: ts.Type,
   checker: ts.TypeChecker,
 ): ts.Symbol | undefined {
-  return getDtoClassSymbol(type, checker, 'STANDARD_SCHEMA_RESPONSE_DTO');
+  return getSchemaClassSymbol(type, checker, 'STANDARD_SCHEMA_RESPONSE_CLASS');
 }
 
-function getRequestDtoClassSymbol(
+function getRequestSchemaClassSymbol(
   type: ts.Type,
   checker: ts.TypeChecker,
 ): ts.Symbol | undefined {
-  return getDtoClassSymbol(type, checker, 'STANDARD_SCHEMA_DTO');
+  return getSchemaClassSymbol(type, checker, 'STANDARD_SCHEMA_CLASS');
 }
 
-function getDtoClassSymbol(
+function getSchemaClassSymbol(
   type: ts.Type,
   checker: ts.TypeChecker,
-  brandName: 'STANDARD_SCHEMA_DTO' | 'STANDARD_SCHEMA_RESPONSE_DTO',
+  brandName: 'STANDARD_SCHEMA_CLASS' | 'STANDARD_SCHEMA_RESPONSE_CLASS',
 ): ts.Symbol | undefined {
   const symbol = type.getSymbol();
 
@@ -1695,7 +1698,7 @@ function getDtoClassSymbol(
     resolvedSymbol,
     declaration,
   );
-  const dtoBrand = staticType.getProperties().find((property) => {
+  const schemaClassBrand = staticType.getProperties().find((property) => {
     return property.declarations?.some((propertyDeclaration) => {
       const propertyName = (propertyDeclaration as ts.NamedDeclaration).name;
 
@@ -1719,17 +1722,17 @@ function getDtoClassSymbol(
     });
   });
 
-  if (dtoBrand === undefined) {
+  if (schemaClassBrand === undefined) {
     return undefined;
   }
 
   const brandDeclaration =
-    dtoBrand.valueDeclaration ?? dtoBrand.declarations?.[0];
+    schemaClassBrand.valueDeclaration ?? schemaClassBrand.declarations?.[0];
 
   if (
     brandDeclaration === undefined ||
     checker.typeToString(
-      checker.getTypeOfSymbolAtLocation(dtoBrand, brandDeclaration),
+      checker.getTypeOfSymbolAtLocation(schemaClassBrand, brandDeclaration),
     ) !== 'true'
   ) {
     return undefined;
@@ -1738,21 +1741,21 @@ function getDtoClassSymbol(
   return resolvedSymbol;
 }
 
-function containsRequestDto(
+function containsRequestSchemaClass(
   typeNode: ts.TypeNode,
   checker: ts.TypeChecker,
 ): boolean {
-  return containsDto(typeNode, checker, getRequestDtoClassSymbol);
+  return containsSchemaClass(typeNode, checker, getRequestSchemaClassSymbol);
 }
 
-function containsResponseDto(
+function containsResponseSchemaClass(
   typeNode: ts.TypeNode,
   checker: ts.TypeChecker,
 ): boolean {
-  return containsDto(typeNode, checker, getResponseDtoClassSymbol);
+  return containsSchemaClass(typeNode, checker, getResponseSchemaClassSymbol);
 }
 
-function containsDto(
+function containsSchemaClass(
   typeNode: ts.TypeNode,
   checker: ts.TypeChecker,
   getClassSymbol: (
@@ -1769,37 +1772,37 @@ function containsDto(
 
   if (ts.isUnionTypeNode(unwrapped) || ts.isIntersectionTypeNode(unwrapped)) {
     return unwrapped.types.some((member) =>
-      containsDto(member, checker, getClassSymbol),
+      containsSchemaClass(member, checker, getClassSymbol),
     );
   }
 
   if (ts.isArrayTypeNode(unwrapped)) {
-    return containsDto(unwrapped.elementType, checker, getClassSymbol);
+    return containsSchemaClass(unwrapped.elementType, checker, getClassSymbol);
   }
 
   if (ts.isTupleTypeNode(unwrapped)) {
     return unwrapped.elements.some((element) =>
-      containsDto(element, checker, getClassSymbol),
+      containsSchemaClass(element, checker, getClassSymbol),
     );
   }
 
   return (
     ts.isTypeReferenceNode(unwrapped) &&
     (unwrapped.typeArguments?.some((argument) =>
-      containsDto(argument, checker, getClassSymbol),
+      containsSchemaClass(argument, checker, getClassSymbol),
     ) ??
       false)
   );
 }
 
-function containsResponseDtoInTypeArguments(
+function containsResponseSchemaClassInTypeArguments(
   typeNode: ts.TypeNode,
   checker: ts.TypeChecker,
 ): boolean {
   return (
     ts.isTypeReferenceNode(typeNode) &&
     (typeNode.typeArguments?.some((argument) =>
-      containsResponseDto(argument, checker),
+      containsResponseSchemaClass(argument, checker),
     ) ??
       false)
   );
@@ -1920,7 +1923,7 @@ function isRedirectRoute(
  * Landing on a real status means sharing a response key with such a decorator, and the merge is
  * destructive in a way source order cannot fix: `ApiResponse` merges incoming over existing, then
  * `ResponseObjectFactory` short-circuits on `standardSchema` and omits `type`, so a hand-written
- * `@ApiOkResponse({ type: LegacyDto })` loses `LegacyDto` with no diagnostic. Backing off is the
+ * `@ApiOkResponse({ type: LegacyClass })` loses `LegacyClass` with no diagnostic. Backing off is the
  * only correct answer — and it is what the inference path already does through
  * `hasExplicitContract`.
  *

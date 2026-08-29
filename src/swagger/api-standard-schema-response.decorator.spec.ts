@@ -4,11 +4,8 @@ import { DECORATORS } from '@nestjs/swagger';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
-import { createStandardSchemaResponseDto } from '../create-standard-schema-response-dto.js';
-import {
-  ApiStandardSchemaResponse,
-  withStandardSchemaResponseArrays,
-} from './api-standard-schema-response.decorator.js';
+import { createResponseSchemaClass } from '../create-response-schema-class.js';
+import { ApiStandardSchemaResponse } from './api-standard-schema-response.decorator.js';
 
 const CLASS_SERIALIZER_OPTIONS = 'class_serializer:options';
 
@@ -24,14 +21,14 @@ const ConverterOnlyProductSchema: StandardSchemaV1 = {
   },
 };
 
-class ProductResponseDto extends createStandardSchemaResponseDto(
+class ProductResponse extends createResponseSchemaClass(
   ProductResponseSchema,
 ) {}
 
 describe(ApiStandardSchemaResponse.name, () => {
   it('combines native response serialization and Swagger metadata', () => {
     class TestController {
-      @ApiStandardSchemaResponse(ProductResponseDto, {
+      @ApiStandardSchemaResponse(ProductResponse, {
         description: 'Products created by the request.',
         example: {
           id: 1,
@@ -141,53 +138,8 @@ describe(ApiStandardSchemaResponse.name, () => {
         readonly standardSchema: StandardSchemaV1;
       };
     };
-    const components = {
-      Product: {
-        properties: {
-          id: { type: 'number' },
-        },
-        type: 'object',
-      },
-    };
-    const converter = vi.fn(() => ({
-      components,
-      schema: {
-        $ref: '#/components/schemas/Product',
-      },
-    }));
-    const wrappedConverter = withStandardSchemaResponseArrays(converter);
-
-    expect(
-      wrappedConverter(swaggerMetadata[200].standardSchema, {
-        schemaType: 'output',
-      }),
-    ).toEqual({
-      components,
-      schema: {
-        $ref: '#/components/schemas/Product',
-      },
-    });
-    expect(converter).toHaveBeenCalledWith(ConverterOnlyProductSchema, {
-      schemaType: 'output',
-    });
-  });
-
-  it('unwraps legacy array metadata created by another installed package copy', () => {
-    const converter = vi.fn(() => ({ schema: { type: 'object' } }));
-    const wrappedConverter = withStandardSchemaResponseArrays(converter);
-    const duplicateCopySchema = {
-      [Symbol.for('@nestm/standard-schema:swagger-array-item')]:
-        ConverterOnlyProductSchema,
-      '~standard': ConverterOnlyProductSchema['~standard'],
-    } as StandardSchemaV1;
-
-    expect(
-      wrappedConverter(duplicateCopySchema, { schemaType: 'output' }),
-    ).toEqual({
-      schema: { type: 'object' },
-    });
-    expect(converter).toHaveBeenCalledWith(ConverterOnlyProductSchema, {
-      schemaType: 'output',
-    });
+    expect(swaggerMetadata[200].standardSchema).toBe(
+      ConverterOnlyProductSchema,
+    );
   });
 });

@@ -1,7 +1,7 @@
 {
   "name": "@nestm/standard-schema",
   "version": "0.1.0-alpha.10",
-  "description": "DTO ergonomics for NestJS 12's native Standard Schema validation and serialization.",
+  "description": "Schema-first validation, serialization, and OpenAPI integration for NestJS using Standard Schema.",
   "license": "MIT",
   "author": "Kauan Guesser",
   "type": "module",
@@ -50,9 +50,11 @@
   "keywords": [
     "nestjs",
     "standard-schema",
-    "dto",
     "validation",
     "serialization",
+    "openapi",
+    "schema-first",
+    "type-safe",
     "zod",
     "valibot",
     "arktype"

@@ -1,6 +1,6 @@
 import { z } from 'zod';
 
-import { createStandardSchemaDto } from './create-standard-schema-dto.js';
+import { createSchemaClass } from './create-schema-class.js';
 import { StandardSchemaResponse } from './standard-schema-response.decorator.js';
 
 const CLASS_SERIALIZER_OPTIONS = 'class_serializer:options';
@@ -10,14 +10,12 @@ const ProductResponseSchema = z.object({
   name: z.string(),
 });
 
-class ProductResponseDto extends createStandardSchemaDto(
-  ProductResponseSchema,
-) {}
+class ProductResponse extends createSchemaClass(ProductResponseSchema) {}
 
 describe(StandardSchemaResponse.name, () => {
-  it('writes the DTO schema into Nest native serializer metadata', () => {
+  it('writes a class-backed schema into Nest native serializer metadata', () => {
     class TestController {
-      @StandardSchemaResponse(ProductResponseDto)
+      @StandardSchemaResponse(ProductResponse)
       findOne(): void {}
     }
 

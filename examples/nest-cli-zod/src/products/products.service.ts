@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 
-import type { CreateProductDto, ListProductsQueryDto } from './product.dto.js';
+import type { CreateProduct, ListProductsQuery } from './product.schemas.js';
 
 export interface ProductRecord {
   readonly id: number;
@@ -23,7 +23,7 @@ export class ProductsService {
   private nextId = 1;
   private revision = 0;
 
-  create(input: CreateProductDto): ProductRecord {
+  create(input: CreateProduct): ProductRecord {
     const now = new Date();
     const product: ProductRecord = {
       id: this.nextId,
@@ -39,7 +39,7 @@ export class ProductsService {
     return product;
   }
 
-  findAll(query: ListProductsQueryDto): ProductRecord[] {
+  findAll(query: ListProductsQuery): ProductRecord[] {
     const normalizedSearch = query.search?.toLowerCase();
     const filtered = [...this.products.values()].filter((product) => {
       const matchesSearch =

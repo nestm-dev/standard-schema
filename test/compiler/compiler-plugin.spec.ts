@@ -4,10 +4,10 @@ import type ts from 'typescript';
 
 import { compileFixture, formatDiagnostics } from './compile-fixture.js';
 
-const responseDtoSource = `
+const schemaClassSource = `
 import {
-  createStandardSchemaDto,
-  createStandardSchemaResponseDto,
+  createSchemaClass,
+  createResponseSchemaClass,
 } from '@nestm/standard-schema';
 import { z } from 'zod';
 
@@ -17,19 +17,19 @@ const ProductResponseSchema = z.object({
   publishedAt: z.date().transform((value) => value.toISOString()),
 });
 
-export class ProductResponseDto extends createStandardSchemaResponseDto(
+export class ProductResponse extends createResponseSchemaClass(
   ProductResponseSchema,
 ) {}
 
-export class OtherProductResponseDto extends createStandardSchemaResponseDto(
+export class OtherProductResponse extends createResponseSchemaClass(
   ProductResponseSchema,
 ) {}
 
-export class RequestDto extends createStandardSchemaDto(
+export class ProductInput extends createSchemaClass(
   z.object({ name: z.string() }),
 ) {}
 
-export class OtherRequestDto extends createStandardSchemaDto(
+export class ProductLookup extends createSchemaClass(
   z.object({ id: z.coerce.number() }),
 ) {}
 
@@ -54,57 +54,57 @@ describe('@nestm/standard-schema Nest compiler plugin', () => {
     const controllerSource = `
 import { Controller, Get } from '@nestjs/common';
 import type {
-  ProductResponseDto,
+  ProductResponse,
   UnusedType,
-} from './product.dto.js';
+} from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('direct')
-  direct(): ProductResponseDto {
+  direct(): ProductResponse {
     return { id: 1, name: 'Direct', publishedAt: new Date() };
   }
 
   @Get('async')
-  async asyncOne(): Promise<ProductResponseDto> {
+  async asyncOne(): Promise<ProductResponse> {
     return { id: 2, name: 'Async', publishedAt: new Date() };
   }
 
   @Get('array')
-  array(): ProductResponseDto[] {
+  array(): ProductResponse[] {
     return [];
   }
 
   @Get('generic-array')
-  genericArray(): Array<ProductResponseDto> {
+  genericArray(): Array<ProductResponse> {
     return [];
   }
 
   @Get('async-array')
-  async asyncArray(): Promise<ProductResponseDto[]> {
+  async asyncArray(): Promise<ProductResponse[]> {
     return [];
   }
 
   @Get('readonly-array')
-  readonlyArray(): readonly ProductResponseDto[] {
+  readonlyArray(): readonly ProductResponse[] {
     return [];
   }
 
   @Get('async-readonly-array')
-  async asyncReadonlyArray(): Promise<readonly ProductResponseDto[]> {
+  async asyncReadonlyArray(): Promise<readonly ProductResponse[]> {
     return [];
   }
 }
 `;
     const baseline = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': controllerSource,
       },
       { usePlugin: false },
     );
     const transformed = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': controllerSource,
     });
 
@@ -124,36 +124,36 @@ export class ProductsController {
       'import * as _nestmStandardSchema from "@nestm/standard-schema";',
     );
     expect(javascript).toMatch(
-      /import \{ ProductResponseDto \} from ['"]\.\/product\.dto\.js['"];/,
+      /import \{ ProductResponse \} from ['"]\.\/product\.schemas\.js['"];/,
     );
     expect(javascript).not.toContain('UnusedType');
     expect(
       countOccurrences(
         javascript,
-        '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+        '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
       ),
     ).toBe(7);
     expect(transformedDeclaration).toBe(baselineDeclaration);
   });
 
-  it('supports aliased decorators and type-only DTO imports without collisions', () => {
+  it('supports aliased decorators and type-only schema-class imports without collisions', () => {
     const result = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': `
 import {
   Controller as ApiController,
   Get as Read,
 } from '@nestjs/common';
 import type {
-  ProductResponseDto as ProductDto,
-} from './product.dto.js';
+  ProductResponse as ProductContract,
+} from './product.schemas.js';
 
 const _nestmStandardSchema = 'occupied';
 
 @ApiController('products')
 export class ProductsController {
   @Read()
-  find(): ProductDto {
+  find(): ProductContract {
     return { id: 1, name: _nestmStandardSchema, publishedAt: new Date() };
   }
 }
@@ -166,10 +166,10 @@ export class ProductsController {
       'import * as _nestmStandardSchema2 from "@nestm/standard-schema";',
     );
     expect(javascript).toMatch(
-      /import \{ ProductResponseDto as ProductDto \} from ['"]\.\/product\.dto\.js['"];/,
+      /import \{ ProductResponse as ProductContract \} from ['"]\.\/product\.schemas\.js['"];/,
     );
     expect(javascript).toContain(
-      '_nestmStandardSchema2.StandardSchemaResponse(ProductDto)',
+      '_nestmStandardSchema2.StandardSchemaResponse(ProductContract)',
     );
   });
 
@@ -178,15 +178,15 @@ export class ProductsController {
       'nest-common.ts': `
 export { Controller, Get } from '@nestjs/common';
 `,
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': `
 import { Controller, Get } from './nest-common.js';
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1, name: 'Product', publishedAt: new Date() };
   }
 }
@@ -196,41 +196,41 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).toContain(
-      '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+      '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
     );
   });
 
-  it('promotes default and named DTOs from the same type-only import', () => {
+  it('promotes default and named schema classes from the same type-only import', () => {
     const result = compileFixture({
-      'mixed.dto.ts': `
-import { createStandardSchemaResponseDto } from '@nestm/standard-schema';
+      'mixed.schemas.ts': `
+import { createResponseSchemaClass } from '@nestm/standard-schema';
 import { z } from 'zod';
 
 const ResponseSchema = z.object({ id: z.number() });
 
-export default class DefaultResponseDto extends createStandardSchemaResponseDto(
+export default class DefaultResponse extends createResponseSchemaClass(
   ResponseSchema,
 ) {}
 
-export class NamedResponseDto extends createStandardSchemaResponseDto(
+export class NamedResponse extends createResponseSchemaClass(
   ResponseSchema,
 ) {}
 `,
       'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import DefaultResponseDto, {
-  type NamedResponseDto,
-} from './mixed.dto.js';
+import DefaultResponse, {
+  type NamedResponse,
+} from './mixed.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('default')
-  defaultResponse(): DefaultResponseDto {
+  defaultResponse(): DefaultResponse {
     return { id: 1 };
   }
 
   @Get('named')
-  namedResponse(): NamedResponseDto {
+  namedResponse(): NamedResponse {
     return { id: 2 };
   }
 }
@@ -240,30 +240,30 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).toMatch(
-      /import DefaultResponseDto, \{ NamedResponseDto \} from ['"]\.\/mixed\.dto\.js['"];/,
+      /import DefaultResponse, \{ NamedResponse \} from ['"]\.\/mixed\.schemas\.js['"];/,
     );
-    expect(javascript).toContain('StandardSchemaResponse(DefaultResponseDto)');
-    expect(javascript).toContain('StandardSchemaResponse(NamedResponseDto)');
+    expect(javascript).toContain('StandardSchemaResponse(DefaultResponse)');
+    expect(javascript).toContain('StandardSchemaResponse(NamedResponse)');
   });
 
-  it('promotes an anonymous default response DTO class', () => {
+  it('promotes an anonymous default response schema class', () => {
     const result = compileFixture({
-      'anonymous.dto.ts': `
-import { createStandardSchemaResponseDto } from '@nestm/standard-schema';
+      'anonymous.schemas.ts': `
+import { createResponseSchemaClass } from '@nestm/standard-schema';
 import { z } from 'zod';
 
 const ResponseSchema = z.object({ id: z.number() });
 
-export default class extends createStandardSchemaResponseDto(ResponseSchema) {}
+export default class extends createResponseSchemaClass(ResponseSchema) {}
 `,
       'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type ProductResponseDto from './anonymous.dto.js';
+import type ProductResponse from './anonymous.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1 };
   }
 }
@@ -273,16 +273,16 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).toMatch(
-      /import ProductResponseDto from ['"]\.\/anonymous\.dto\.js['"];/,
+      /import ProductResponse from ['"]\.\/anonymous\.schemas\.js['"];/,
     );
     expect(javascript).toContain(
-      '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+      '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
     );
   });
 
   it('lets explicit metadata win and skips routes without a serializable body', () => {
     const result = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': `
 import {
   Controller,
@@ -297,26 +297,26 @@ import {
   StandardSchemaResponse,
 } from '@nestm/standard-schema';
 import {
-  ProductResponseDto,
-  RequestDto,
-} from './product.dto.js';
+  ProductResponse,
+  ProductInput,
+} from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('inferred')
-  inferred(): ProductResponseDto {
+  inferred(): ProductResponse {
     return { id: 1, name: 'Inferred', publishedAt: new Date() };
   }
 
   @Get('explicit')
-  @StandardSchemaResponse(ProductResponseDto)
-  explicit(): ProductResponseDto {
+  @StandardSchemaResponse(ProductResponse)
+  explicit(): ProductResponse {
     return { id: 2, name: 'Explicit', publishedAt: new Date() };
   }
 
   @Get('native')
-  @SerializeOptions({ schema: ProductResponseDto.schema })
-  native(): ProductResponseDto {
+  @SerializeOptions({ schema: ProductResponse.schema })
+  native(): ProductResponse {
     return { id: 3, name: 'Native', publishedAt: new Date() };
   }
 
@@ -328,17 +328,17 @@ export class ProductsController {
 
   @Get('no-content')
   @HttpCode(HttpStatus.NO_CONTENT)
-  noContent(): ProductResponseDto {
+  noContent(): ProductResponse {
     return { id: 4, name: 'No content', publishedAt: new Date() };
   }
 
   @Get('raw')
-  raw(@Res() _response: unknown): ProductResponseDto {
+  raw(@Res() _response: unknown): ProductResponse {
     return { id: 5, name: 'Raw', publishedAt: new Date() };
   }
 
-  @Get('request-dto')
-  requestDto(): RequestDto {
+  @Get('request-schema-class')
+  requestSchemaClass(): ProductInput {
     return { name: 'Request' };
   }
 
@@ -357,16 +357,16 @@ export class ProductsController {
     return { id: 6 };
   }
 
-  helper(): ProductResponseDto {
+  helper(): ProductResponse {
     return { id: 7, name: 'Helper', publishedAt: new Date() };
   }
 }
 
 @Controller('explicit-controller')
-@StandardSchemaResponse(ProductResponseDto)
+@StandardSchemaResponse(ProductResponse)
 export class ExplicitController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 8, name: 'Controller', publishedAt: new Date() };
   }
 }
@@ -378,14 +378,11 @@ export class ExplicitController {
     expect(
       countOccurrences(
         javascript,
-        '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+        '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
       ),
     ).toBe(1);
     expect(
-      countOccurrences(
-        javascript,
-        'StandardSchemaResponse(ProductResponseDto)',
-      ),
+      countOccurrences(javascript, 'StandardSchemaResponse(ProductResponse)'),
     ).toBe(3);
   });
 
@@ -397,35 +394,35 @@ export class ExplicitController {
     // `StandardSchemaResponse(source, {})` plus `ApiResponse`, so serialization is unchanged.
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import { Controller, Get, Post } from '@nestjs/common';
 import { StandardSchemaResponse } from '@nestm/standard-schema';
 import { ApiStandardSchemaResponse } from '@nestm/standard-schema/swagger';
-import { ProductResponseDto, OtherProductResponseDto } from './product.dto.js';
+import { ProductResponse, OtherProductResponse } from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('documented')
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   documented() {
     return { id: 1, name: 'Documented', publishedAt: new Date() };
   }
 
   @Get('already-documented')
-  @ApiStandardSchemaResponse(OtherProductResponseDto)
+  @ApiStandardSchemaResponse(OtherProductResponse)
   alreadyDocumented() {
     return { id: 2, name: 'Hand written', publishedAt: new Date() };
   }
 
   @Post('with-options')
-  @StandardSchemaResponse(ProductResponseDto, { validateOptions: {} })
+  @StandardSchemaResponse(ProductResponse, { validateOptions: {} })
   withOptions() {
     return { id: 3, name: 'Options', publishedAt: new Date() };
   }
 
   @Post('created')
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   created() {
     return { id: 4, name: 'Created', publishedAt: new Date() };
   }
@@ -442,28 +439,28 @@ export class ProductsController {
     // what keeps the schema off the `default` response key, where generators read it as the error
     // type and leave the success response untyped.
     expect(javascript).toContain(
-      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto, { status: 200 })',
+      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponse, { status: 200 })',
     );
     // @Post carries Nest's 201, matching what the inference path derives.
     expect(javascript).toContain(
-      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto, { status: 201 })',
+      '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponse, { status: 201 })',
     );
 
     // A hand-written swagger decorator is authoritative and must not be duplicated.
     expect(
       countOccurrences(
         javascript,
-        'ApiStandardSchemaResponse(OtherProductResponseDto)',
+        'ApiStandardSchemaResponse(OtherProductResponse)',
       ),
     ).toBe(1);
 
     // Two arguments partition options differently between the two decorators, so rewriting could
     // move a serialization key into the document. Left exactly as written.
     expect(javascript).toContain(
-      'StandardSchemaResponse(ProductResponseDto, { validateOptions: {} })',
+      'StandardSchemaResponse(ProductResponse, { validateOptions: {} })',
     );
     expect(javascript).not.toContain(
-      'ApiStandardSchemaResponse(ProductResponseDto, { validateOptions: {} })',
+      'ApiStandardSchemaResponse(ProductResponse, { validateOptions: {} })',
     );
   });
 
@@ -474,7 +471,7 @@ export class ProductsController {
     // is the right escape hatch and "rewrite without a status" is not.
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import {
   Controller,
@@ -487,42 +484,42 @@ import {
 } from '@nestjs/common';
 import { ApiOkResponse } from '@nestjs/swagger';
 import { StandardSchemaResponse } from '@nestm/standard-schema';
-import { ProductResponseDto, OtherProductResponseDto } from './product.dto.js';
+import { ProductResponse, OtherProductResponse } from './product.schemas.js';
 
 declare const RUNTIME_STATUS: number;
 
 @Controller('products')
 export class ProductsController {
   @Get('raw')
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   raw(@Res() _response: unknown) {
     return { id: 1, name: 'Raw', publishedAt: new Date() };
   }
 
   @Get('redirect')
   @Redirect('https://example.com', 301)
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   redirect() {
     return { id: 2, name: 'Redirect', publishedAt: new Date() };
   }
 
   @Delete('no-content')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   noContent() {
     return { id: 3, name: 'NoContent', publishedAt: new Date() };
   }
 
   @Get('dynamic-status')
   @HttpCode(RUNTIME_STATUS)
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   dynamicStatus() {
     return { id: 4, name: 'Dynamic', publishedAt: new Date() };
   }
 
   @Get('already-swaggered')
-  @ApiOkResponse({ type: OtherProductResponseDto, description: 'Hand written.' })
-  @StandardSchemaResponse(ProductResponseDto)
+  @ApiOkResponse({ type: OtherProductResponse, description: 'Hand written.' })
+  @StandardSchemaResponse(ProductResponse)
   alreadySwaggered() {
     return { id: 5, name: 'Swaggered', publishedAt: new Date() };
   }
@@ -541,50 +538,47 @@ export class ProductsController {
     // Not one of the five was rewritten.
     expect(javascript).not.toContain('ApiStandardSchemaResponse');
     expect(
-      countOccurrences(
-        javascript,
-        'StandardSchemaResponse(ProductResponseDto)',
-      ),
+      countOccurrences(javascript, 'StandardSchemaResponse(ProductResponse)'),
     ).toBe(5);
 
     // And the hand-written Swagger contract survives intact. Sharing its response key would let
     // ResponseObjectFactory's standardSchema short-circuit drop `type` — silently, and in a way
     // decorator order cannot fix.
-    expect(javascript).toContain('type: OtherProductResponseDto');
+    expect(javascript).toContain('type: OtherProductResponse');
   });
 
   it('derives the status the same way the inference path does', () => {
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import { Controller, Get, HttpCode, HttpStatus, Patch, Post } from '@nestjs/common';
 import { StandardSchemaResponse } from '@nestm/standard-schema';
-import { ProductResponseDto } from './product.dto.js';
+import { ProductResponse } from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('read')
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   read() {
     return { id: 1, name: 'Read', publishedAt: new Date() };
   }
 
   @Post('create')
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   create() {
     return { id: 2, name: 'Create', publishedAt: new Date() };
   }
 
   @Patch('update')
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   update() {
     return { id: 3, name: 'Update', publishedAt: new Date() };
   }
 
   @Get('accepted')
   @HttpCode(HttpStatus.ACCEPTED)
-  @StandardSchemaResponse(ProductResponseDto)
+  @StandardSchemaResponse(ProductResponse)
   accepted() {
     return { id: 4, name: 'Accepted', publishedAt: new Date() };
   }
@@ -604,11 +598,11 @@ export class ProductsController {
 
   it('leaves StandardSchemaResponse alone when swagger output is disabled', () => {
     const result = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
 import { StandardSchemaResponse } from '@nestm/standard-schema';
-import { ProductResponseDto } from './product.dto.js';
+import { ProductResponse } from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
@@ -627,10 +621,10 @@ export class ProductsController {
 
   it('does not treat unrelated local decorators as explicit response metadata', () => {
     const result = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
 function SerializeOptions(): ClassDecorator & MethodDecorator {
   return () => undefined;
@@ -645,7 +639,7 @@ function StandardSchemaResponse(): ClassDecorator & MethodDecorator {
 export class ProductsController {
   @Get()
   @SerializeOptions()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1, name: 'Product', publishedAt: new Date() };
   }
 }
@@ -655,7 +649,7 @@ export class ProductsController {
 export class OtherProductsController {
   @Get()
   @StandardSchemaResponse()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 2, name: 'Other product', publishedAt: new Date() };
   }
 }
@@ -667,27 +661,27 @@ export class OtherProductsController {
     expect(
       countOccurrences(
         javascript,
-        '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+        '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
       ),
     ).toBe(2);
   });
 
   it('infers passthrough responses while continuing to skip raw responses', () => {
     const result = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'products.controller.ts': `
 import { Controller, Get, Res } from '@nestjs/common';
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('passthrough')
-  passthrough(@Res({ passthrough: true }) _response: unknown): ProductResponseDto {
+  passthrough(@Res({ passthrough: true }) _response: unknown): ProductResponse {
     return { id: 1, name: 'Passthrough', publishedAt: new Date() };
   }
 
   @Get('raw')
-  raw(@Res() _response: unknown): ProductResponseDto {
+  raw(@Res() _response: unknown): ProductResponse {
     return { id: 2, name: 'Raw', publishedAt: new Date() };
   }
 }
@@ -699,7 +693,7 @@ export class ProductsController {
     expect(
       countOccurrences(
         javascript,
-        '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+        '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
       ),
     ).toBe(1);
   });
@@ -707,33 +701,33 @@ export class ProductsController {
   it.each([
     {
       name: 'union',
-      declaration: 'find(): ProductResponseDto | OtherProductResponseDto',
+      declaration: 'find(): ProductResponse | OtherProductResponse',
       reason: 'union response types',
     },
     {
       name: 'nested array',
-      declaration: 'find(): ProductResponseDto[][]',
+      declaration: 'find(): ProductResponse[][]',
       reason: 'nested Promise or array response types',
     },
     {
       name: 'tuple',
-      declaration: 'find(): [ProductResponseDto]',
+      declaration: 'find(): [ProductResponse]',
       reason: 'tuple response types',
     },
     {
       name: 'readonly tuple',
-      declaration: 'find(): readonly [ProductResponseDto]',
+      declaration: 'find(): readonly [ProductResponse]',
       reason: 'tuple response types',
     },
     {
       name: 'structural envelope',
       prelude: 'type Page<T> = { data: T[] };',
-      declaration: 'find(): Page<ProductResponseDto>',
+      declaration: 'find(): Page<ProductResponse>',
       reason: 'response envelopes and generic wrappers',
     },
     {
       name: 'intersection',
-      declaration: 'find(): ProductResponseDto & { readonly extra: string }',
+      declaration: 'find(): ProductResponse & { readonly extra: string }',
       reason: 'intersection response types',
     },
   ])(
@@ -741,13 +735,13 @@ export class ProductsController {
     ({ declaration, prelude = '', reason }) => {
       expect(() =>
         compileFixture({
-          'product.dto.ts': responseDtoSource,
+          'product.schemas.ts': schemaClassSource,
           'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
 import type {
-  OtherProductResponseDto,
-  ProductResponseDto,
-} from './product.dto.js';
+  OtherProductResponse,
+  ProductResponse,
+} from './product.schemas.js';
 
 ${prelude}
 
@@ -796,17 +790,17 @@ export class ProductsController {
     ({ name, wrapper }) => {
       expect(() =>
         compileFixture({
-          'product.dto.ts': responseDtoSource,
+          'product.schemas.ts': schemaClassSource,
           'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
 ${wrapper}
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ${name}<ProductResponseDto> {
+  find(): ${name}<ProductResponse> {
     throw new Error('not executed');
   }
 }
@@ -819,23 +813,23 @@ export class ProductsController {
   it('aggregates ambiguous contracts during preflight', () => {
     expect(() =>
       compileFixture({
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
 import type {
-  OtherProductResponseDto,
-  ProductResponseDto,
-} from './product.dto.js';
+  OtherProductResponse,
+  ProductResponse,
+} from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('union')
-  union(): ProductResponseDto | OtherProductResponseDto {
+  union(): ProductResponse | OtherProductResponse {
     throw new Error('not executed');
   }
 
   @Get('nested')
-  nested(): ProductResponseDto[][] {
+  nested(): ProductResponse[][] {
     throw new Error('not executed');
   }
 }
@@ -845,21 +839,21 @@ export class ProductsController {
   });
 
   it.each([
-    `export type { ProductResponseDto } from './product.dto.js';`,
-    `export type * from './product.dto.js';`,
+    `export type { ProductResponse } from './product.schemas.js';`,
+    `export type * from './product.schemas.js';`,
   ])('rejects promotion through a type-only re-export', (barrelSource) => {
     expect(() =>
       compileFixture({
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'product.barrel.ts': barrelSource,
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.barrel.js';
+import type { ProductResponse } from './product.barrel.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     throw new Error('not executed');
   }
 }
@@ -872,18 +866,18 @@ export class ProductsController {
     expect(() =>
       compileFixture(
         {
-          'product.dto.ts': responseDtoSource,
+          'product.schemas.ts': schemaClassSource,
           'product.barrel.ts': `
-export type { ProductResponseDto } from './product.dto.js';
+export type { ProductResponse } from './product.schemas.js';
 `,
           'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import { ProductResponseDto } from './product.barrel.js';
+import { ProductResponse } from './product.barrel.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     throw new Error('not executed');
   }
 }
@@ -901,22 +895,22 @@ export class ProductsController {
   it('rejects ambient response classes declared in implementation files', () => {
     expect(() =>
       compileFixture({
-        'ghost.dto.ts': `
-import { STANDARD_SCHEMA_RESPONSE_DTO } from '@nestm/standard-schema';
+        'ghost.schemas.ts': `
+import { STANDARD_SCHEMA_RESPONSE_CLASS } from '@nestm/standard-schema';
 
-export declare class GhostResponseDto {
-  static readonly [STANDARD_SCHEMA_RESPONSE_DTO]: true;
+export declare class GhostResponse {
+  static readonly [STANDARD_SCHEMA_RESPONSE_CLASS]: true;
   readonly id: number;
 }
 `,
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { GhostResponseDto } from './ghost.dto.js';
+import type { GhostResponse } from './ghost.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): GhostResponseDto {
+  find(): GhostResponse {
     throw new Error('not executed');
   }
 }
@@ -928,24 +922,24 @@ export class ProductsController {
   it('rejects a separately exported ambient response class', () => {
     expect(() =>
       compileFixture({
-        'ghost.dto.ts': `
-import { STANDARD_SCHEMA_RESPONSE_DTO } from '@nestm/standard-schema';
+        'ghost.schemas.ts': `
+import { STANDARD_SCHEMA_RESPONSE_CLASS } from '@nestm/standard-schema';
 
-declare class GhostResponseDto {
-  static readonly [STANDARD_SCHEMA_RESPONSE_DTO]: true;
+declare class GhostResponse {
+  static readonly [STANDARD_SCHEMA_RESPONSE_CLASS]: true;
   readonly id: number;
 }
 
-export { GhostResponseDto };
+export { GhostResponse };
 `,
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { GhostResponseDto } from './ghost.dto.js';
+import type { GhostResponse } from './ghost.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): GhostResponseDto {
+  find(): GhostResponse {
     throw new Error('not executed');
   }
 }
@@ -959,17 +953,17 @@ export class ProductsController {
       compileFixture({
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import { STANDARD_SCHEMA_RESPONSE_DTO } from '@nestm/standard-schema';
+import { STANDARD_SCHEMA_RESPONSE_CLASS } from '@nestm/standard-schema';
 
-declare class GhostResponseDto {
-  static readonly [STANDARD_SCHEMA_RESPONSE_DTO]: true;
+declare class GhostResponse {
+  static readonly [STANDARD_SCHEMA_RESPONSE_CLASS]: true;
   readonly id: number;
 }
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): GhostResponseDto {
+  find(): GhostResponse {
     throw new Error('not executed');
   }
 }
@@ -982,20 +976,20 @@ export class ProductsController {
     expect(() =>
       compileFixture(
         {
-          'product.dto.ts': responseDtoSource,
+          'product.schemas.ts': schemaClassSource,
           'product.barrel.ts': `
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
-export { ProductResponseDto };
+export { ProductResponse };
 `,
           'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.barrel.js';
+import type { ProductResponse } from './product.barrel.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     throw new Error('not executed');
   }
 }
@@ -1013,22 +1007,22 @@ export class ProductsController {
   it('rejects split type and value exports with different identities', () => {
     expect(() =>
       compileFixture({
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'product.value.ts': `
-export const ProductResponseDto = class UnrelatedRuntimeValue {};
+export const ProductResponse = class UnrelatedRuntimeValue {};
 `,
         'product.barrel.ts': `
-export type { ProductResponseDto } from './product.dto.js';
-export { ProductResponseDto } from './product.value.js';
+export type { ProductResponse } from './product.schemas.js';
+export { ProductResponse } from './product.value.js';
 `,
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.barrel.js';
+import type { ProductResponse } from './product.barrel.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     throw new Error('not executed');
   }
 }
@@ -1037,20 +1031,20 @@ export class ProductsController {
     ).toThrow('cannot be referenced safely at runtime');
   });
 
-  it('promotes a response DTO through a safe runtime barrel re-export', () => {
+  it('promotes a response schema class through a safe runtime barrel re-export', () => {
     const result = compileFixture({
-      'product.dto.ts': responseDtoSource,
+      'product.schemas.ts': schemaClassSource,
       'product.barrel.ts': `
-export { ProductResponseDto } from './product.dto.js';
+export { ProductResponse } from './product.schemas.js';
 `,
       'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.barrel.js';
+import type { ProductResponse } from './product.barrel.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1, name: 'Product', publishedAt: new Date() };
   }
 }
@@ -1060,26 +1054,26 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).toMatch(
-      /import \{ ProductResponseDto \} from ['"]\.\/product\.barrel\.js['"];/,
+      /import \{ ProductResponse \} from ['"]\.\/product\.barrel\.js['"];/,
     );
     expect(javascript).toContain(
-      '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+      '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
     );
   });
 
   it('removes type-only resolution-mode attributes from promoted imports', () => {
     const result = compileFixture({
-      'product.dto.mts': responseDtoSource,
+      'product.schemas.mts': schemaClassSource,
       'products.controller.mts': `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from './product.dto.mjs' with {
+import type { ProductResponse } from './product.schemas.mjs' with {
   'resolution-mode': 'import',
 };
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1, name: 'Product', publishedAt: new Date() };
   }
 }
@@ -1089,7 +1083,7 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).toMatch(
-      /import \{ ProductResponseDto \} from ['"]\.\/product\.dto\.mjs['"];/,
+      /import \{ ProductResponse \} from ['"]\.\/product\.schemas\.mjs['"];/,
     );
     expect(javascript).not.toContain('resolution-mode');
   });
@@ -1099,16 +1093,16 @@ export class ProductsController {
       'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
 
-const STANDARD_SCHEMA_RESPONSE_DTO: unique symbol = Symbol('lookalike');
+const STANDARD_SCHEMA_RESPONSE_CLASS: unique symbol = Symbol('lookalike');
 
-class FakeResponseDto {
-  static readonly [STANDARD_SCHEMA_RESPONSE_DTO] = true;
+class FakeResponse {
+  static readonly [STANDARD_SCHEMA_RESPONSE_CLASS] = true;
 }
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): FakeResponseDto {
+  find(): FakeResponse {
     return {};
   }
 }
@@ -1118,13 +1112,13 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).not.toContain('_nestmStandardSchema');
-    expect(javascript).not.toContain('StandardSchemaResponse(FakeResponseDto)');
+    expect(javascript).not.toContain('StandardSchemaResponse(FakeResponse)');
   });
 
   it('adds native request schemas and enriches existing Swagger success descriptions', () => {
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import {
   Body as Payload,
@@ -1142,22 +1136,22 @@ import {
   ApiResponse,
 } from '@nestjs/swagger';
 import type {
-  OtherRequestDto,
-  ProductResponseDto,
-  RequestDto,
-} from './product.dto.js';
+  ProductLookup,
+  ProductResponse,
+  ProductInput,
+} from './product.schemas.js';
 
 @ApiController('products')
 export class ProductsController {
   @Create()
   @ApiCreatedResponse({ description: 'Product created.' })
-  create(@Payload() body: RequestDto): ProductResponseDto {
+  create(@Payload() body: ProductInput): ProductResponse {
     return { id: 1, name: body.name, publishedAt: new Date() };
   }
 
   @Read()
   @ApiOkResponse({ description: 'Products listed.' })
-  findAll(@Search() query: OtherRequestDto): ProductResponseDto[] {
+  findAll(@Search() query: ProductLookup): ProductResponse[] {
     return query.id === undefined ? [] : [];
   }
 
@@ -1167,7 +1161,7 @@ export class ProductsController {
     status: HttpStatus.ACCEPTED,
     description: 'Product accepted.',
   })
-  findOne(@RouteParams() params: OtherRequestDto): ProductResponseDto {
+  findOne(@RouteParams() params: ProductLookup): ProductResponse {
     return { id: params.id, name: 'Product', publishedAt: new Date() };
   }
 }
@@ -1183,13 +1177,13 @@ export class ProductsController {
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
     expect(javascript).toMatch(
-      /Payload\(\{\s*schema: RequestDto\.schema\s*\}\)/,
+      /Payload\(\{\s*schema: ProductInput\.schema\s*\}\)/,
     );
     expect(javascript).toMatch(
-      /Search\(\{\s*schema: OtherRequestDto\.schema\s*\}\)/,
+      /Search\(\{\s*schema: ProductLookup\.schema\s*\}\)/,
     );
     expect(javascript).toMatch(
-      /RouteParams\(\{\s*schema: OtherRequestDto\.schema\s*\}\)/,
+      /RouteParams\(\{\s*schema: ProductLookup\.schema\s*\}\)/,
     );
     expect(javascript).toContain(
       "ApiCreatedResponse({ description: 'Product created.' })",
@@ -1203,24 +1197,24 @@ export class ProductsController {
     expect(
       countOccurrences(
         javascript,
-        '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponseDto',
+        '_nestmStandardSchemaSwagger.ApiStandardSchemaResponse(ProductResponse',
       ),
     ).toBe(3);
     expect(javascript).toMatch(
-      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 201\s*\}\)/,
+      /ApiStandardSchemaResponse\(ProductResponse, \{\s*status: 201\s*\}\)/,
     );
     expect(javascript).toMatch(
-      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 200,\s*isArray: true\s*\}\)/,
+      /ApiStandardSchemaResponse\(ProductResponse, \{\s*status: 200,\s*isArray: true\s*\}\)/,
     );
     expect(javascript).toMatch(
-      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 202\s*\}\)/,
+      /ApiStandardSchemaResponse\(ProductResponse, \{\s*status: 202\s*\}\)/,
     );
   });
 
   it('injects the composite Swagger decorator with Nest default statuses and array shape', () => {
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import {
   Controller,
@@ -1232,29 +1226,29 @@ import {
   RequestMethod,
 } from '@nestjs/common';
 import { ApiDefaultResponse } from '@nestjs/swagger';
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Post()
-  create(): ProductResponseDto {
+  create(): ProductResponse {
     return { id: 1, name: 'Created', publishedAt: new Date() };
   }
 
   @RequestMapping({ method: RequestMethod.POST, path: 'mapped' })
-  mappedPost(): ProductResponseDto {
+  mappedPost(): ProductResponse {
     return { id: 4, name: 'Mapped', publishedAt: new Date() };
   }
 
   @Get()
-  findAll(): Promise<readonly ProductResponseDto[]> {
+  findAll(): Promise<readonly ProductResponse[]> {
     return Promise.resolve([]);
   }
 
   @Get('accepted')
   @HttpCode(HttpStatus.ACCEPTED)
   @ApiDefaultResponse({ description: 'Unexpected failure.' })
-  accepted(): ProductResponseDto {
+  accepted(): ProductResponse {
     return { id: 2, name: 'Accepted', publishedAt: new Date() };
   }
 }
@@ -1273,19 +1267,19 @@ export class ProductsController {
       'import * as _nestmStandardSchemaSwagger from "@nestm/standard-schema/swagger";',
     );
     expect(javascript).toMatch(
-      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 201\s*\}\)/,
+      /ApiStandardSchemaResponse\(ProductResponse, \{\s*status: 201\s*\}\)/,
     );
     expect(
       countOccurrences(
         javascript,
-        'ApiStandardSchemaResponse(ProductResponseDto, { status: 201 })',
+        'ApiStandardSchemaResponse(ProductResponse, { status: 201 })',
       ),
     ).toBe(2);
     expect(javascript).toMatch(
-      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 200,\s*isArray: true\s*\}\)/,
+      /ApiStandardSchemaResponse\(ProductResponse, \{\s*status: 200,\s*isArray: true\s*\}\)/,
     );
     expect(javascript).toMatch(
-      /ApiStandardSchemaResponse\(ProductResponseDto, \{\s*status: 202\s*\}\)/,
+      /ApiStandardSchemaResponse\(ProductResponse, \{\s*status: 202\s*\}\)/,
     );
     expect(javascript).toContain(
       "ApiDefaultResponse({ description: 'Unexpected failure.' })",
@@ -1298,7 +1292,7 @@ export class ProductsController {
   it('preserves explicit request, serialization, composite, and Swagger schemas', () => {
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import {
   Body,
@@ -1309,23 +1303,23 @@ import {
 import { ApiOkResponse } from '@nestjs/swagger';
 import { ApiStandardSchemaResponse } from '@nestm/standard-schema/swagger';
 import {
-  OtherProductResponseDto,
-  ProductResponseDto,
-  RequestDto,
-} from './product.dto.js';
+  OtherProductResponse,
+  ProductResponse,
+  ProductInput,
+} from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get('request')
   explicitRequest(
-    @Body({ schema: RequestDto.schema }) body: RequestDto,
+    @Body({ schema: ProductInput.schema }) body: ProductInput,
   ): string {
     return body.name;
   }
 
   @Get('native')
-  @SerializeOptions({ schema: ProductResponseDto.schema })
-  native(): ProductResponseDto {
+  @SerializeOptions({ schema: ProductResponse.schema })
+  native(): ProductResponse {
     return { id: 1, name: 'Native', publishedAt: new Date() };
   }
 
@@ -1334,16 +1328,16 @@ export class ProductsController {
     description: 'Explicit schema.',
     schema: { type: 'string' },
   })
-  swaggerSchema(): ProductResponseDto {
+  swaggerSchema(): ProductResponse {
     return { id: 2, name: 'Swagger', publishedAt: new Date() };
   }
 
   @Get('composite')
-  @ApiStandardSchemaResponse(ProductResponseDto, {
+  @ApiStandardSchemaResponse(ProductResponse, {
     description: 'Explicit composite.',
     status: 200,
   })
-  composite(): ProductResponseDto | OtherProductResponseDto {
+  composite(): ProductResponse | OtherProductResponse {
     return { id: 3, name: 'Composite', publishedAt: new Date() };
   }
 }
@@ -1358,43 +1352,40 @@ export class ProductsController {
     const javascript = getOutput(result.emitted, 'products.controller.js');
 
     expect(formatDiagnostics(result.diagnostics)).toBe('');
-    expect(countOccurrences(javascript, 'schema: RequestDto.schema')).toBe(1);
+    expect(countOccurrences(javascript, 'schema: ProductInput.schema')).toBe(1);
     expect(javascript).toMatch(
       /ApiOkResponse\(\{\s*description: ['"]Explicit schema\.['"],\s*schema: \{ type: ['"]string['"] \},?\s*\}\)/,
     );
     expect(
       countOccurrences(
         javascript,
-        '_nestmStandardSchema.StandardSchemaResponse(ProductResponseDto)',
+        '_nestmStandardSchema.StandardSchemaResponse(ProductResponse)',
       ),
     ).toBe(1);
     expect(
-      countOccurrences(
-        javascript,
-        'ApiStandardSchemaResponse(ProductResponseDto',
-      ),
+      countOccurrences(javascript, 'ApiStandardSchemaResponse(ProductResponse'),
     ).toBe(1);
   });
 
   it.each([
     {
       name: 'property-bound parameter',
-      parameter: "@Param('id') input: RequestDto",
+      parameter: "@Param('id') input: ProductInput",
       reason: 'property-bound request decorators',
     },
     {
       name: 'request union',
-      parameter: '@Body() input: RequestDto | OtherRequestDto',
+      parameter: '@Body() input: ProductInput | ProductLookup',
       reason: 'request unions, wrappers, tuples, and arrays',
     },
     {
       name: 'request wrapper',
-      parameter: '@Query() input: Array<RequestDto>',
+      parameter: '@Query() input: Array<ProductInput>',
       reason: 'request unions, wrappers, tuples, and arrays',
     },
     {
       name: 'nested request array',
-      parameter: '@Body() input: RequestDto[][]',
+      parameter: '@Body() input: ProductInput[][]',
       reason: 'request unions, wrappers, tuples, and arrays',
     },
   ])(
@@ -1403,13 +1394,13 @@ export class ProductsController {
       expect(() =>
         compileFixture(
           {
-            'product.dto.ts': responseDtoSource,
+            'product.schemas.ts': schemaClassSource,
             'products.controller.ts': `
 import { Body, Controller, Param, Post, Query } from '@nestjs/common';
 import type {
-  OtherRequestDto,
-  RequestDto,
-} from './product.dto.js';
+  ProductLookup,
+  ProductInput,
+} from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
@@ -1434,10 +1425,10 @@ export class ProductsController {
     expect(() =>
       compileFixture(
         {
-          'product.dto.ts': responseDtoSource,
+          'product.schemas.ts': schemaClassSource,
           'products.controller.ts': `
 import { Controller, Get, HttpCode } from '@nestjs/common';
-import type { ProductResponseDto } from './product.dto.js';
+import type { ProductResponse } from './product.schemas.js';
 
 declare function resolveStatus(): number;
 
@@ -1445,7 +1436,7 @@ declare function resolveStatus(): number;
 export class ProductsController {
   @Get()
   @HttpCode(resolveStatus())
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1, name: 'Product', publishedAt: new Date() };
   }
 }
@@ -1463,18 +1454,18 @@ export class ProductsController {
   it('can skip ambiguous contracts when explicitly configured', () => {
     const result = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
+        'product.schemas.ts': schemaClassSource,
         'products.controller.ts': `
 import { Controller, Get } from '@nestjs/common';
 import type {
-  OtherProductResponseDto,
-  ProductResponseDto,
-} from './product.dto.js';
+  OtherProductResponse,
+  ProductResponse,
+} from './product.schemas.js';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto | OtherProductResponseDto {
+  find(): ProductResponse | OtherProductResponse {
     throw new Error('not executed');
   }
 }
@@ -1495,13 +1486,13 @@ export class ProductsController {
 
   it('supports a configurable controller suffix and .mts controllers', () => {
     const defaultResult = compileFixture({
-      'product.dto.ts': responseDtoSource,
-      'products.api.ts': createSimpleControllerSource('./product.dto.js'),
+      'product.schemas.ts': schemaClassSource,
+      'products.api.ts': createSimpleControllerSource('./product.schemas.js'),
     });
     const customResult = compileFixture(
       {
-        'product.dto.ts': responseDtoSource,
-        'products.api.ts': createSimpleControllerSource('./product.dto.js'),
+        'product.schemas.ts': schemaClassSource,
+        'products.api.ts': createSimpleControllerSource('./product.schemas.js'),
       },
       {
         pluginOptions: {
@@ -1510,27 +1501,29 @@ export class ProductsController {
       },
     );
     const mtsResult = compileFixture({
-      'product.dto.mts': responseDtoSource,
-      'products.controller.mts':
-        createSimpleControllerSource('./product.dto.mjs'),
+      'product.schemas.mts': schemaClassSource,
+      'products.controller.mts': createSimpleControllerSource(
+        './product.schemas.mjs',
+      ),
     });
 
     expect(getOutput(defaultResult.emitted, 'products.api.js')).not.toContain(
       'StandardSchemaResponse',
     );
     expect(getOutput(customResult.emitted, 'products.api.js')).toContain(
-      'StandardSchemaResponse(ProductResponseDto)',
+      'StandardSchemaResponse(ProductResponse)',
     );
     expect(getOutput(mtsResult.emitted, 'products.controller.mjs')).toContain(
-      'StandardSchemaResponse(ProductResponseDto)',
+      'StandardSchemaResponse(ProductResponse)',
     );
   });
 
   it('is idempotent when the transformer is registered more than once', () => {
     const files = {
-      'product.dto.ts': responseDtoSource,
-      'products.controller.ts':
-        createSimpleControllerSource('./product.dto.js'),
+      'product.schemas.ts': schemaClassSource,
+      'products.controller.ts': createSimpleControllerSource(
+        './product.schemas.js',
+      ),
     };
     const once = compileFixture(files);
     const twice = compileFixture(files, { transformerPasses: 2 });
@@ -1575,15 +1568,15 @@ export class ProductsController {
   });
 });
 
-function createSimpleControllerSource(dtoImport: string): string {
+function createSimpleControllerSource(schemaClassImport: string): string {
   return `
 import { Controller, Get } from '@nestjs/common';
-import type { ProductResponseDto } from '${dtoImport}';
+import type { ProductResponse } from '${schemaClassImport}';
 
 @Controller('products')
 export class ProductsController {
   @Get()
-  find(): ProductResponseDto {
+  find(): ProductResponse {
     return { id: 1, name: 'Product', publishedAt: new Date() };
   }
 }
