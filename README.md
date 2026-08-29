@@ -257,25 +257,6 @@ Registers validation and serialization globally. `validation` and `serialization
 
 `getStandardSchema`, `isStandardSchema`, `isSchemaClass`, `isResponseSchemaClass`, `SchemaClass`, `ResponseSchemaClass`, `StandardSchemaSource`, `STANDARD_SCHEMA_CLASS`, and `STANDARD_SCHEMA_RESPONSE_CLASS` are available for custom integrations.
 
-## Migrating from 0.1 alpha
-
-This release intentionally provides no compatibility aliases:
-
-| 0.1 alpha                          | Schema-first API                                 |
-| ---------------------------------- | ------------------------------------------------ |
-| `createStandardSchemaDto`          | `createSchemaClass`                              |
-| `createStandardSchemaResponseDto`  | `createResponseSchemaClass`                      |
-| `StandardSchemaDtoValidationPipe`  | `SchemaClassValidationPipe`                      |
-| `StandardSchemaDtoClass`           | `SchemaClass`                                    |
-| `StandardSchemaResponseDtoClass`   | `ResponseSchemaClass`                            |
-| `isStandardSchemaDto`              | `isSchemaClass`                                  |
-| `isStandardSchemaResponseDto`      | `isResponseSchemaClass`                          |
-| `STANDARD_SCHEMA_DTO`              | `STANDARD_SCHEMA_CLASS`                          |
-| `STANDARD_SCHEMA_RESPONSE_DTO`     | `STANDARD_SCHEMA_RESPONSE_CLASS`                 |
-| `withStandardSchemaResponseArrays` | Removed; Nest Swagger 12 handles arrays natively |
-
-Rename `*.dto.ts` files to `*.schemas.ts` or `*.contracts.ts` and remove `Dto` suffixes from schema-class names. Existing 0.1 alpha releases remain available for applications that need the previous API.
-
 ## Scope
 
 The package is a metadata and setup adapter. It does not implement a validation engine, depend on a particular schema vendor, instantiate schema classes, define an application response envelope, or recover runtime schemas from erased aliases and interfaces.
