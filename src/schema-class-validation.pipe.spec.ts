@@ -2,8 +2,8 @@ import { BadRequestException, type ArgumentMetadata } from '@nestjs/common';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
-import { createStandardSchemaDto } from './create-standard-schema-dto.js';
-import { StandardSchemaDtoValidationPipe } from './standard-schema-dto-validation.pipe.js';
+import { createSchemaClass } from './create-schema-class.js';
+import { SchemaClassValidationPipe } from './schema-class-validation.pipe.js';
 
 const CreateProductSchema = z.object({
   name: z.string().trim().min(1),
@@ -11,7 +11,7 @@ const CreateProductSchema = z.object({
   active: z.boolean().default(true),
 });
 
-class CreateProductDto extends createStandardSchemaDto(CreateProductSchema) {}
+class CreateProduct extends createSchemaClass(CreateProductSchema) {}
 
 const AsyncVendorNeutralSchema: StandardSchemaV1<unknown, { value: number }> = {
   '~standard': {
@@ -33,18 +33,18 @@ const AsyncVendorNeutralSchema: StandardSchemaV1<unknown, { value: number }> = {
   },
 };
 
-class AsyncVendorNeutralDto extends createStandardSchemaDto(
+class AsyncVendorNeutralInput extends createSchemaClass(
   AsyncVendorNeutralSchema,
 ) {}
 
 const bodyMetadata: ArgumentMetadata = {
   type: 'body',
-  metatype: CreateProductDto,
+  metatype: CreateProduct,
 };
 
-describe(StandardSchemaDtoValidationPipe.name, () => {
-  it('infers the DTO schema and returns Nest native parsed output', async () => {
-    const pipe = new StandardSchemaDtoValidationPipe();
+describe(SchemaClassValidationPipe.name, () => {
+  it('infers the class schema and returns Nest native parsed output', async () => {
+    const pipe = new SchemaClassValidationPipe();
 
     const result = await pipe.transform(
       {
@@ -63,7 +63,7 @@ describe(StandardSchemaDtoValidationPipe.name, () => {
   });
 
   it('keeps an explicit native metadata schema as the highest priority', async () => {
-    const pipe = new StandardSchemaDtoValidationPipe();
+    const pipe = new SchemaClassValidationPipe();
     const explicitSchema = z.object({
       page: z.coerce.number().int().positive(),
     });
@@ -80,15 +80,15 @@ describe(StandardSchemaDtoValidationPipe.name, () => {
   });
 
   it('preserves Nest native validation exceptions', async () => {
-    const pipe = new StandardSchemaDtoValidationPipe();
+    const pipe = new SchemaClassValidationPipe();
 
     await expect(
       pipe.transform({ name: '', price: -1 }, bodyMetadata),
     ).rejects.toBeInstanceOf(BadRequestException);
   });
 
-  it('passes values without an explicit or DTO-carried schema through', async () => {
-    const pipe = new StandardSchemaDtoValidationPipe();
+  it('passes values without an explicit or class-carried schema through', async () => {
+    const pipe = new SchemaClassValidationPipe();
     const input = { untouched: true };
 
     const result = await pipe.transform(input, {
@@ -100,7 +100,7 @@ describe(StandardSchemaDtoValidationPipe.name, () => {
   });
 
   it('honors native pipe options such as transform: false', async () => {
-    const pipe = new StandardSchemaDtoValidationPipe({
+    const pipe = new SchemaClassValidationPipe({
       transform: false,
     });
     const input = {
@@ -114,13 +114,13 @@ describe(StandardSchemaDtoValidationPipe.name, () => {
   });
 
   it('supports asynchronous, non-Zod Standard Schema implementations', async () => {
-    const pipe = new StandardSchemaDtoValidationPipe();
+    const pipe = new SchemaClassValidationPipe();
 
     const result = await pipe.transform(
       { value: '42' },
       {
         type: 'body',
-        metatype: AsyncVendorNeutralDto,
+        metatype: AsyncVendorNeutralInput,
       },
     );
 

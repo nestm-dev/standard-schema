@@ -187,18 +187,16 @@ function assertCompilerOutput(root) {
     'utf8',
   );
 
-  if (
-    !pluginJavaScript.includes('ApiStandardSchemaResponse(ProductResponseDto')
-  ) {
+  if (!pluginJavaScript.includes('ApiStandardSchemaResponse(ProductResponse')) {
     throw new Error(
       'Nest CLI build did not inject response and Swagger schema metadata.',
     );
   }
 
   for (const expectedParameterMetadata of [
-    'Payload({ schema: CreateProductDto.schema })',
-    'Search({ schema: ListProductsQueryDto.schema })',
-    'RouteParams({ schema: ProductParamsDto.schema })',
+    'Payload({ schema: CreateProduct.schema })',
+    'Search({ schema: ListProductsQuery.schema })',
+    'RouteParams({ schema: ProductParams.schema })',
   ]) {
     if (!pluginJavaScript.includes(expectedParameterMetadata)) {
       throw new Error(
@@ -238,14 +236,14 @@ function verifyPackedAmbiguity(root) {
     `
 import { Controller, Get } from '@nestjs/common';
 import type {
-  ProductResponseDto,
-  ProductSummaryResponseDto,
-} from './product.dto.js';
+  ProductResponse,
+  ProductSummaryResponse,
+} from './product.schemas.js';
 
 @Controller('ambiguous')
 export class AmbiguousController {
   @Get()
-  find(): ProductResponseDto | ProductSummaryResponseDto {
+  find(): ProductResponse | ProductSummaryResponse {
     throw new Error('not executed');
   }
 }
@@ -280,7 +278,9 @@ export class AmbiguousController {
     }
 
     if (
-      !output.includes('union response types require one concrete response DTO')
+      !output.includes(
+        'union response types require one concrete response schema class',
+      )
     ) {
       throw new Error(
         `Packed consumer failed for an unexpected reason:\n${output}`,

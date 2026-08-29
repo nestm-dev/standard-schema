@@ -8,7 +8,7 @@ import {
 } from '@nestjs/common';
 import { APP_INTERCEPTOR, APP_PIPE, Reflector } from '@nestjs/core';
 
-import { StandardSchemaDtoValidationPipe } from './standard-schema-dto-validation.pipe.js';
+import { SchemaClassValidationPipe } from './schema-class-validation.pipe.js';
 
 /** Options forwarded to Nest's native validation and serialization helpers. */
 export interface StandardSchemaModuleOptions {
@@ -19,7 +19,7 @@ export interface StandardSchemaModuleOptions {
 @Module({})
 export class StandardSchemaModule {
   /**
-   * Registers the DTO-aware request pipe and Nest's native Standard Schema
+   * Registers the schema-class-aware request pipe and Nest's native Standard Schema
    * serializer as global application enhancers.
    */
   static forRoot(options: StandardSchemaModuleOptions = {}): DynamicModule {
@@ -30,8 +30,7 @@ export class StandardSchemaModule {
     if (validationOptions !== false) {
       providers.push({
         provide: APP_PIPE,
-        useFactory: () =>
-          new StandardSchemaDtoValidationPipe(validationOptions),
+        useFactory: () => new SchemaClassValidationPipe(validationOptions),
       });
     }
 

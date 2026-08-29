@@ -14,11 +14,8 @@ import { Test } from '@nestjs/testing';
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 import { z } from 'zod';
 
-import { createStandardSchemaDto, StandardSchemaModule } from '../src/index.js';
-import {
-  ApiStandardSchemaResponse,
-  withStandardSchemaResponseArrays,
-} from '../src/swagger/index.js';
+import { createSchemaClass, StandardSchemaModule } from '../src/index.js';
+import { ApiStandardSchemaResponse } from '../src/swagger/index.js';
 
 const CreateProductSchema = z.object({
   name: z.string().trim().min(1),
@@ -26,21 +23,19 @@ const CreateProductSchema = z.object({
   active: z.boolean().default(true),
 });
 
-class CreateProductDto extends createStandardSchemaDto(CreateProductSchema) {}
+class CreateProduct extends createSchemaClass(CreateProductSchema) {}
 
 const ListProductsQuerySchema = z.object({
   active: z.stringbool().optional(),
 });
 
-class ListProductsQueryDto extends createStandardSchemaDto(
-  ListProductsQuerySchema,
-) {}
+class ListProductsQuery extends createSchemaClass(ListProductsQuerySchema) {}
 
 const ProductParamsSchema = z.object({
   id: z.coerce.number().int().positive(),
 });
 
-class ProductParamsDto extends createStandardSchemaDto(ProductParamsSchema) {}
+class ProductParams extends createSchemaClass(ProductParamsSchema) {}
 
 const ProductResponseSchema = z.object({
   id: z.number().int().positive(),
@@ -49,9 +44,7 @@ const ProductResponseSchema = z.object({
   active: z.boolean(),
 });
 
-class ProductResponseDto extends createStandardSchemaDto(
-  ProductResponseSchema,
-) {}
+class ProductResponse extends createSchemaClass(ProductResponseSchema) {}
 
 interface ConverterOnlyProduct {
   readonly id: number;
@@ -97,13 +90,13 @@ const converterOnlySchemaTypes: Array<'input' | 'output'> = [];
 @Controller('products')
 class ProductsController {
   @Post()
-  @ApiStandardSchemaResponse(ProductResponseDto, {
+  @ApiStandardSchemaResponse(ProductResponse, {
     description: 'Product created.',
     status: 201,
   })
   create(
-    @Body({ schema: CreateProductDto.schema }) input: CreateProductDto,
-  ): ProductResponseDto {
+    @Body({ schema: CreateProduct.schema }) input: CreateProduct,
+  ): ProductResponse {
     capturedBody = input;
 
     const product = {
@@ -116,15 +109,15 @@ class ProductsController {
   }
 
   @Get()
-  @ApiStandardSchemaResponse(ProductResponseDto, {
+  @ApiStandardSchemaResponse(ProductResponse, {
     description: 'Products returned.',
     isArray: true,
     status: 200,
   })
   findAll(
-    @Query({ schema: ListProductsQueryDto.schema })
-    query: ListProductsQueryDto,
-  ): ProductResponseDto[] {
+    @Query({ schema: ListProductsQuery.schema })
+    query: ListProductsQuery,
+  ): ProductResponse[] {
     capturedQuery = query;
 
     const products = [
@@ -148,8 +141,8 @@ class ProductsController {
   }
 
   @Get('broken')
-  @ApiStandardSchemaResponse(ProductResponseDto, { status: 200 })
-  broken(): ProductResponseDto {
+  @ApiStandardSchemaResponse(ProductResponse, { status: 200 })
+  broken(): ProductResponse {
     return {
       id: -1,
       name: 'Broken',
@@ -169,10 +162,10 @@ class ProductsController {
   }
 
   @Get(':id')
-  @ApiStandardSchemaResponse(ProductResponseDto, { status: 200 })
+  @ApiStandardSchemaResponse(ProductResponse, { status: 200 })
   findOne(
-    @Param({ schema: ProductParamsDto.schema }) params: ProductParamsDto,
-  ): ProductResponseDto {
+    @Param({ schema: ProductParams.schema }) params: ProductParams,
+  ): ProductResponse {
     capturedParams = params;
 
     return {
@@ -208,31 +201,29 @@ describe('Nest native Standard Schema integration', () => {
         .setVersion('1')
         .build(),
       {
-        standardSchemaConverter: withStandardSchemaResponseArrays(
-          (schema, options) => {
-            if (schema !== ConverterOnlyProductSchema) {
-              return undefined;
-            }
+        standardSchemaConverter: (schema, options) => {
+          if (schema !== ConverterOnlyProductSchema) {
+            return undefined;
+          }
 
-            converterOnlySchemaTypes.push(options.schemaType);
+          converterOnlySchemaTypes.push(options.schemaType);
 
-            return {
-              components: {
-                ConverterOnlyProduct: {
-                  properties: {
-                    id: { type: 'number' },
-                    name: { type: 'string' },
-                  },
-                  required: ['id', 'name'],
-                  type: 'object',
+          return {
+            components: {
+              ConverterOnlyProduct: {
+                properties: {
+                  id: { type: 'number' },
+                  name: { type: 'string' },
                 },
+                required: ['id', 'name'],
+                type: 'object',
               },
-              schema: {
-                $ref: '#/components/schemas/ConverterOnlyProduct',
-              },
-            };
-          },
-        ),
+            },
+            schema: {
+              $ref: '#/components/schemas/ConverterOnlyProduct',
+            },
+          };
+        },
       },
     );
   });
@@ -247,7 +238,7 @@ describe('Nest native Standard Schema integration', () => {
     capturedParams = undefined;
   });
 
-  it('infers a body schema from @Body() DTO metadata and returns parsed values', async () => {
+  it('infers a body schema from @Body() class metadata and returns parsed values', async () => {
     const response = await app.inject({
       method: 'POST',
       payload: {
@@ -264,7 +255,7 @@ describe('Nest native Standard Schema integration', () => {
       price: 49.9,
       active: true,
     });
-    expect(capturedBody).not.toBeInstanceOf(CreateProductDto);
+    expect(capturedBody).not.toBeInstanceOf(CreateProduct);
     expect(response.json()).toEqual({
       id: 1,
       name: 'Keyboard',

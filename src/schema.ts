@@ -1,45 +1,52 @@
 import type { StandardSchemaV1 } from '@standard-schema/spec';
 
-export const STANDARD_SCHEMA_DTO = Symbol.for('@nestm/standard-schema/dto');
-export const STANDARD_SCHEMA_RESPONSE_DTO = Symbol.for(
-  '@nestm/standard-schema/response-dto',
+export const STANDARD_SCHEMA_CLASS = Symbol.for('@nestm/standard-schema/class');
+export const STANDARD_SCHEMA_RESPONSE_CLASS = Symbol.for(
+  '@nestm/standard-schema/response-class',
 );
 
 /**
- * Runtime class created by `createStandardSchemaDto`.
+ * Runtime class backed by a Standard Schema.
  *
- * Its instance type is the schema's parsed object output.
+ * The class value is itself a Standard Schema, while its instance type is the
+ * parsed schema output received by a request handler.
  */
-export interface StandardSchemaDtoClass<
+export interface SchemaClass<
   Schema extends StandardSchemaV1<unknown, object> = StandardSchemaV1<
     unknown,
     object
   >,
+> extends StandardSchemaV1<
+  StandardSchemaV1.InferInput<Schema>,
+  StandardSchemaV1.InferOutput<Schema>
 > {
   new (): StandardSchemaV1.InferOutput<Schema>;
-  readonly [STANDARD_SCHEMA_DTO]: true;
+  readonly [STANDARD_SCHEMA_CLASS]: true;
   readonly schema: Schema;
 }
 
 /**
- * Runtime class created by `createStandardSchemaResponseDto`.
+ * Runtime class backed by a response Standard Schema.
  *
- * Its instance type is the value accepted from the response handler, before
- * the schema parses it into the serialized HTTP output.
+ * The class value is itself a Standard Schema, while its instance type is the
+ * value accepted from a response handler before serialization.
  */
-export interface StandardSchemaResponseDtoClass<
+export interface ResponseSchemaClass<
   Schema extends StandardSchemaV1<object, unknown> = StandardSchemaV1<
     object,
     unknown
   >,
+> extends StandardSchemaV1<
+  StandardSchemaV1.InferInput<Schema>,
+  StandardSchemaV1.InferOutput<Schema>
 > {
   new (): StandardSchemaV1.InferInput<Schema>;
-  readonly [STANDARD_SCHEMA_RESPONSE_DTO]: true;
+  readonly [STANDARD_SCHEMA_RESPONSE_CLASS]: true;
   readonly schema: Schema;
 }
 
 export type StandardSchemaSource =
-  StandardSchemaV1 | StandardSchemaDtoClass | StandardSchemaResponseDtoClass;
+  StandardSchemaV1 | SchemaClass | ResponseSchemaClass;
 
 /** Returns whether a value implements Standard Schema V1. */
 export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
@@ -56,51 +63,46 @@ export function isStandardSchema(value: unknown): value is StandardSchemaV1 {
   );
 }
 
-/** Returns whether a value is a branded Standard Schema DTO class. */
-export function isStandardSchemaDto(
-  value: unknown,
-): value is StandardSchemaDtoClass {
+export function isSchemaClass(value: unknown): value is SchemaClass {
   if (typeof value !== 'function') {
     return false;
   }
 
   const candidate = value as unknown as {
-    readonly [STANDARD_SCHEMA_DTO]?: unknown;
+    readonly [STANDARD_SCHEMA_CLASS]?: unknown;
     readonly schema?: unknown;
   };
 
   return (
-    candidate[STANDARD_SCHEMA_DTO] === true &&
+    candidate[STANDARD_SCHEMA_CLASS] === true &&
     isStandardSchema(candidate.schema)
   );
 }
 
-/** Returns whether a value is a branded Standard Schema response DTO class. */
-export function isStandardSchemaResponseDto(
+export function isResponseSchemaClass(
   value: unknown,
-): value is StandardSchemaResponseDtoClass {
+): value is ResponseSchemaClass {
   if (typeof value !== 'function') {
     return false;
   }
 
   const candidate = value as unknown as {
-    readonly [STANDARD_SCHEMA_RESPONSE_DTO]?: unknown;
+    readonly [STANDARD_SCHEMA_RESPONSE_CLASS]?: unknown;
     readonly schema?: unknown;
   };
 
   return (
-    candidate[STANDARD_SCHEMA_RESPONSE_DTO] === true &&
+    candidate[STANDARD_SCHEMA_RESPONSE_CLASS] === true &&
     isStandardSchema(candidate.schema)
   );
 }
 
-/** Resolves a raw Standard Schema or the schema carried by a generated DTO. */
 export function getStandardSchema<
   Schema extends StandardSchemaV1<unknown, object>,
->(source: StandardSchemaDtoClass<Schema>): Schema;
+>(source: SchemaClass<Schema>): Schema;
 export function getStandardSchema<
   Schema extends StandardSchemaV1<object, unknown>,
->(source: StandardSchemaResponseDtoClass<Schema>): Schema;
+>(source: ResponseSchemaClass<Schema>): Schema;
 export function getStandardSchema<Schema extends StandardSchemaV1>(
   source: Schema,
 ): Schema;
@@ -110,7 +112,7 @@ export function getStandardSchema(
 export function getStandardSchema(
   source: StandardSchemaSource,
 ): StandardSchemaV1 {
-  if (isStandardSchemaDto(source) || isStandardSchemaResponseDto(source)) {
+  if (isSchemaClass(source) || isResponseSchemaClass(source)) {
     return source.schema;
   }
 
@@ -118,9 +120,7 @@ export function getStandardSchema(
     return source;
   }
 
-  throw new TypeError(
-    'Expected a Standard Schema or a class created by a Standard Schema DTO factory.',
-  );
+  throw new TypeError('Expected a Standard Schema or schema class.');
 }
 
 function isObjectLike(value: unknown): value is Record<PropertyKey, unknown> {

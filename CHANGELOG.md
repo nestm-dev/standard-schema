@@ -141,6 +141,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Changed
+
+- Repositioned the package around schema-first validation, serialization, and OpenAPI integration.
+- Replaced the DTO factories and types with `createSchemaClass`, `createResponseSchemaClass`, `SchemaClass`, and `ResponseSchemaClass`.
+- Replaced `StandardSchemaDtoValidationPipe` with `SchemaClassValidationPipe` while continuing to delegate parsing to Nest's native Standard Schema components.
+- Updated the optional compiler plugin and example to use schema-class terminology and `*.schemas.ts` files.
+- Removed the deprecated `withStandardSchemaResponseArrays` adapter now that Nest Swagger 12 handles array shaping natively.
+
 ## [0.1.0-alpha.0] - 2026-07-30
 
 ### Added
