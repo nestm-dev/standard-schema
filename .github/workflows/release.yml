@@ -20,7 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v7
         with: { fetch-depth: 0 }
-      - uses: pnpm/setup@v2
+      - uses: pnpm/setup@v3
         with:
           install: false
       # Do not set `registry-url`: it writes an _authToken line to .npmrc,
