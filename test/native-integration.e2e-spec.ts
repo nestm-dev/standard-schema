@@ -46,6 +46,14 @@ const ProductResponseSchema = z.object({
 
 class ProductResponse extends createSchemaClass(ProductResponseSchema) {}
 
+const PublishedProductSchema = z.object({
+  id: z.number().int().positive(),
+  publishedAt: z.codec(z.date(), z.iso.datetime(), {
+    decode: (date) => date.toISOString(),
+    encode: (iso) => new Date(iso),
+  }),
+});
+
 interface ConverterOnlyProduct {
   readonly id: number;
   readonly name: string;
@@ -159,6 +167,12 @@ class ProductsController {
   })
   converterOnly(): ConverterOnlyProduct[] {
     return [{ id: 1, name: 'Keyboard' }];
+  }
+
+  @Get('published/latest')
+  @ApiStandardSchemaResponse(PublishedProductSchema, { status: 200 })
+  latestPublished(): z.input<typeof PublishedProductSchema> {
+    return { id: 1, publishedAt: new Date('2026-01-02T03:04:05.000Z') };
   }
 
   @Get(':id')
@@ -337,6 +351,34 @@ describe('Nest native Standard Schema integration', () => {
     });
 
     expect(response.statusCode).toBe(500);
+  });
+
+  it('serializes and documents codec output', async () => {
+    const response = await app.inject({
+      method: 'GET',
+      url: '/products/published/latest',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toEqual({
+      id: 1,
+      publishedAt: '2026-01-02T03:04:05.000Z',
+    });
+    expect(
+      openApiDocument.paths['/products/published/latest']?.get?.responses?.[
+        '200'
+      ],
+    ).toMatchObject({
+      content: {
+        'application/json': {
+          schema: {
+            properties: {
+              publishedAt: { format: 'date-time', type: 'string' },
+            },
+          },
+        },
+      },
+    });
   });
 
   it('publishes request and response Standard Schemas through Swagger', () => {

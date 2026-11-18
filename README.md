@@ -41,17 +41,24 @@ export const CreateProductSchema = z.object({
 
 export type CreateProduct = z.output<typeof CreateProductSchema>;
 
+const IsoDateTime = z.codec(z.date(), z.iso.datetime(), {
+  decode: (date) => date.toISOString(),
+  encode: (iso) => new Date(iso),
+});
+
 export const ProductResponseSchema = z.object({
   id: z.number().int().positive(),
   name: z.string(),
   price: z.number().nonnegative(),
   active: z.boolean(),
-  publishedAt: z.date().transform((value) => value.toISOString()),
+  publishedAt: IsoDateTime,
 });
 
 export type ProductResponse = z.input<typeof ProductResponseSchema>;
 export type ProductJson = z.output<typeof ProductResponseSchema>;
 ```
+
+Prefer `z.codec()` over `.transform()` for values that change shape on the way out. A codec keeps both sides describable, so OpenAPI documents `publishedAt` as a `date-time` string, while a one-way transform cannot be represented in JSON Schema.
 
 Pass request schemas through Nest's native decorator metadata:
 
@@ -110,7 +117,10 @@ export class CreateProduct extends createSchemaClass(CreateProductSchema) {}
 const ProductResponseSchema = z.object({
   id: z.number(),
   name: z.string(),
-  publishedAt: z.date().transform((value) => value.toISOString()),
+  publishedAt: z.codec(z.date(), z.iso.datetime(), {
+    decode: (date) => date.toISOString(),
+    encode: (iso) => new Date(iso),
+  }),
 });
 
 export class ProductResponse extends createResponseSchemaClass(
@@ -153,7 +163,7 @@ export class AppModule {}
 The module globally registers:
 
 - `SchemaClassValidationPipe`, a thin extension that discovers schemas from reflected schema classes before delegating to Nest's native `StandardSchemaValidationPipe`.
-- Nest's native `StandardSchemaSerializerInterceptor`.
+- Nest's native `StandardSchemaSerializerInterceptor`, or a fail-closed extension of it when `requireResponseSchema` is enabled.
 
 Explicit `{ schema }` request metadata always takes priority over a reflected schema class.
 
@@ -169,6 +179,123 @@ StandardSchemaModule.forRoot({
 ```
 
 Do not register duplicate global Standard Schema pipes or serializers. Schemas with non-idempotent transforms would otherwise be parsed more than once.
+
+### Fail-closed responses
+
+By default, a route without a response schema returns whatever its handler returns, as in plain Nest. Set `serialization.requireResponseSchema` to make a missing response schema an error instead:
+
+```ts
+StandardSchemaModule.forRoot({
+  serialization: { requireResponseSchema: true },
+});
+```
+
+With this option:
+
+- Application bootstrap (`app.init()` or `app.listen()`) throws a `MissingResponseSchemaError` that lists every JSON route without a response schema. Its `routes` property holds the controller, handler, HTTP method, and paths of each one, so a test that boots the application doubles as a route-manifest check.
+- A route that still returns a body without a schema at request time fails with Nest's opaque `500 Internal server error` response, and the error is logged on the server. The body is never sent.
+- A response schema can come from `@StandardSchemaResponse()`, `@ApiStandardSchemaResponse()`, `@SerializeOptions({ schema })` on the handler or controller, or the module-wide `serialization.schema`.
+
+Routes without a JSON body are exempt: `@HttpCode(204)`, `@Redirect()`, `@Render()`, `@Sse()`, a non-JSON `Content-Type` set with `@Header()`, `HEAD` routes, and handlers whose declared return type is `StreamableFile`. At request time, `undefined`, `null`, `StreamableFile`, and streamed bodies are also let through.
+
+Exempt anything else explicitly with `@SkipResponseSchema()`, on a handler or a whole controller:
+
+```ts
+import { SkipResponseSchema } from '@nestm/standard-schema';
+
+@Get('export.csv')
+@SkipResponseSchema()
+export(@Res() response: Response): void {
+  response.type('text/csv').send(this.reports.toCsv());
+}
+```
+
+Routes that write the response themselves through `@Res()` or `@Next()` bypass serialization entirely, so the bootstrap check reports them until they carry `@SkipResponseSchema()`. Asynchronous file handlers (`async download(): Promise<StreamableFile>`) also need it, because their declared return type is only `Promise` at runtime.
+
+`findRoutesWithoutResponseSchema(controllers)` runs the same check over a list of controller classes without booting an application.
+
+### Validation problem details
+
+By default, invalid input produces Nest's native `400 Bad Request` body with a flat list of messages. Set `validation.problemDetails` to answer with an [RFC 9457](https://www.rfc-editor.org/rfc/rfc9457) `application/problem+json` document instead:
+
+```ts
+StandardSchemaModule.forRoot({
+  validation: {
+    problemDetails: { typeBaseUri: 'https://example.com/problems/' },
+  },
+});
+```
+
+```json
+{
+  "type": "https://example.com/problems/validation-failed",
+  "title": "Request validation failed",
+  "status": 400,
+  "detail": "2 validation errors in the request body.",
+  "errors": [
+    {
+      "in": "body",
+      "pointer": "/lines/0/quantity",
+      "code": "too_small",
+      "message": "Too small: expected number to be >0"
+    },
+    {
+      "in": "body",
+      "pointer": "/coupon~1code",
+      "code": "unrecognized_keys",
+      "message": "Unrecognized key: \"coupon/code\""
+    }
+  ]
+}
+```
+
+Each `errors` entry has:
+
+- `in`: `body`, `query`, or `path`, from the parameter decorator (`@Body()`, `@Query()`, `@Param()`). Custom parameter decorators have no location unless the `location` option maps them, for example to `header`.
+- `pointer`: an [RFC 6901](https://www.rfc-editor.org/rfc/rfc6901) JSON Pointer into that request part, with `~` escaped as `~0` and `/` as `~1`. A named parameter such as `@Query('page', { schema })` is included in the pointer (`/page`). The empty pointer `""` means the whole part.
+- `code`: the schema library's issue code (Zod and ArkType `code`, Valibot `type`), or `invalid`.
+- `message`: the schema library's message.
+
+An `unrecognized_keys` issue that names several unknown keys becomes one entry per key.
+
+`problemDetails` accepts `true` or these options:
+
+| Option        | Default                     | Description                                                                                  |
+| ------------- | --------------------------- | -------------------------------------------------------------------------------------------- |
+| `typeBaseUri` | none                        | Prefixed verbatim to the slug to form `type`. Without it, `type` is the bare, relative slug. |
+| `typeSlug`    | `validation-failed`         | The problem type slug.                                                                       |
+| `title`       | `Request validation failed` | The problem title.                                                                           |
+| `status`      | `errorHttpStatusCode`, 400  | The HTTP status and `status` member.                                                         |
+| `detail`      | error count and location    | A string, or a function of the errors and parameter metadata.                                |
+| `maxErrors`   | 100                         | The most `errors` entries to include. `detail` still counts them all.                        |
+| `location`    | see above                   | Maps a parameter's `ArgumentMetadata` to `body`, `query`, `path`, `header`, or `undefined`.  |
+
+`problemDetails` also registers `ValidationProblemFilter`, which sends the `ValidationProblemException` with the `application/problem+json` content type. If your application has its own catch-all exception filter, it may take precedence. Use the factory directly and let your filter render the problem instead:
+
+```ts
+import {
+  createValidationProblemFactory,
+  ValidationProblemException,
+} from '@nestm/standard-schema';
+
+StandardSchemaModule.forRoot({
+  validation: {
+    exceptionFactory: createValidationProblemFactory({
+      typeBaseUri: 'https://example.com/problems/',
+    }),
+  },
+});
+
+// In your exception filter:
+if (exception instanceof ValidationProblemException) {
+  response
+    .status(exception.getStatus())
+    .type('application/problem+json')
+    .json({ ...exception.problem, instance: request.originalUrl });
+}
+```
+
+Every `validation.exceptionFactory` receives the parameter's `ArgumentMetadata` as a second argument, so custom factories can tell body, query, and path errors apart too. `exceptionFactory` and `problemDetails` cannot be combined.
 
 ## OpenAPI
 
@@ -190,6 +317,22 @@ create(
 ```
 
 Raw schemas and response schema classes are both accepted. Pass `isArray: true` when the response is an array of items.
+
+For array responses, pass the **item** schema, not `z.array(Item)`. Nest's serializer parses an array response item by item, so an array schema would receive each item and reject it. The same applies to `@StandardSchemaResponse`:
+
+```ts
+@Get()
+@ApiStandardSchemaResponse(ProductResponseSchema, {
+  description: 'Products returned.',
+  isArray: true,
+  status: 200,
+})
+findAll(): ProductResponse[] {
+  // ...
+}
+```
+
+Responses that wrap an array in an object, such as `{ data: Product[], meta }`, are ordinary objects: describe them with an object schema that contains the array.
 
 Pass an explicit `status` when writing `@ApiStandardSchemaResponse` by hand. Without one, Nest Swagger stores the schema under the `default` response key.
 
@@ -251,7 +394,35 @@ Available from `@nestm/standard-schema/swagger`. Combines `@StandardSchemaRespon
 
 ### `StandardSchemaModule.forRoot(options?)`
 
-Registers validation and serialization globally. `validation` and `serialization` accept their corresponding native Nest option objects or `false`.
+Registers validation and serialization globally. `validation` and `serialization` accept their corresponding native Nest option objects or `false`. `validation` also accepts `problemDetails` and a metadata-aware `exceptionFactory`; `serialization` also accepts `requireResponseSchema`.
+
+### `@SkipResponseSchema()`
+
+Exempts a route or controller from `serialization.requireResponseSchema`.
+
+### `MissingResponseSchemaError`
+
+Thrown at bootstrap, or at request time, when `requireResponseSchema` finds routes without a response schema. `routes` lists them.
+
+### `findRoutesWithoutResponseSchema(controllers, defaultSchema?)`
+
+Returns the routes of the given controller classes that `requireResponseSchema` would report.
+
+### `createValidationProblemFactory(options?)`
+
+Returns a `validation.exceptionFactory` that throws a `ValidationProblemException` carrying an RFC 9457 validation problem.
+
+### `ValidationProblemException`
+
+An `HttpException` whose `problem` and `getResponse()` are the validation problem document.
+
+### `ValidationProblemFilter`
+
+An exception filter that sends a `ValidationProblemException` as `application/problem+json`. Registered by `validation.problemDetails`.
+
+### `toJsonPointer(path)`
+
+Formats a Standard Schema issue path as an RFC 6901 JSON Pointer.
 
 ### Low-level helpers
 

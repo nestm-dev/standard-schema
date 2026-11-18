@@ -149,6 +149,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+### Added
+
+- Added `serialization.requireResponseSchema`, `@SkipResponseSchema()`, `MissingResponseSchemaError`, and `findRoutesWithoutResponseSchema()` to fail closed on JSON routes without a response schema.
+- Added `validation.problemDetails`, `createValidationProblemFactory()`, `ValidationProblemException`, `ValidationProblemFilter`, and `toJsonPointer()` for RFC 9457 validation problems.
+- Passed the failing parameter's `ArgumentMetadata` to `validation.exceptionFactory` as a second argument.
+
 ### Changed
 
 - Repositioned the package around schema-first validation, serialization, and OpenAPI integration.

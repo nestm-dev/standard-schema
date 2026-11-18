@@ -4,6 +4,7 @@ import { z } from 'zod';
 
 import { createSchemaClass } from './create-schema-class.js';
 import { SchemaClassValidationPipe } from './schema-class-validation.pipe.js';
+import { ValidationProblemException } from './validation-problem.js';
 
 const CreateProductSchema = z.object({
   name: z.string().trim().min(1),
@@ -125,5 +126,97 @@ describe(SchemaClassValidationPipe.name, () => {
     );
 
     expect(result).toEqual({ value: 42 });
+  });
+  it('passes the resolved parameter metadata to a custom exception factory', async () => {
+    const exceptionFactory = vi.fn(
+      (
+        _issues: readonly StandardSchemaV1.Issue[],
+        _metadata: ArgumentMetadata,
+      ) => new BadRequestException('custom'),
+    );
+    const pipe = new SchemaClassValidationPipe({ exceptionFactory });
+
+    await expect(
+      pipe.transform({ name: '', price: 1 }, bodyMetadata),
+    ).rejects.toThrow('custom');
+    expect(exceptionFactory).toHaveBeenCalledWith(
+      [expect.objectContaining({ path: ['name'] })],
+      { ...bodyMetadata, schema: CreateProductSchema },
+    );
+  });
+
+  it('keeps single-argument native exception factories working', async () => {
+    const pipe = new SchemaClassValidationPipe({
+      exceptionFactory: (issues) =>
+        new BadRequestException(`${issues.length} issue(s)`),
+    });
+
+    await expect(
+      pipe.transform({ name: '', price: -1 }, bodyMetadata),
+    ).rejects.toThrow('2 issue(s)');
+  });
+
+  it('throws RFC 9457 validation problems with problemDetails', async () => {
+    const pipe = new SchemaClassValidationPipe({
+      problemDetails: { typeBaseUri: 'https://example.com/problems/' },
+    });
+
+    const error: unknown = await pipe
+      .transform(
+        { name: '', price: 1, extra: true },
+        {
+          type: 'query',
+          metatype: Object,
+          schema: CreateProductSchema.strict(),
+        },
+      )
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ValidationProblemException);
+    expect((error as ValidationProblemException).getResponse()).toEqual({
+      type: 'https://example.com/problems/validation-failed',
+      title: 'Request validation failed',
+      status: 400,
+      detail: '2 validation errors in the query string.',
+      errors: [
+        {
+          in: 'query',
+          pointer: '/name',
+          code: 'too_small',
+          message: expect.any(String),
+        },
+        {
+          in: 'query',
+          pointer: '/extra',
+          code: 'unrecognized_keys',
+          message: 'Unrecognized key: "extra"',
+        },
+      ],
+    });
+  });
+
+  it('uses errorHttpStatusCode as the default problem status', async () => {
+    const pipe = new SchemaClassValidationPipe({
+      errorHttpStatusCode: 422,
+      problemDetails: true,
+    });
+
+    const error: unknown = await pipe
+      .transform({ name: '', price: 1 }, bodyMetadata)
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(ValidationProblemException);
+    expect((error as ValidationProblemException).getStatus()).toBe(422);
+    expect((error as ValidationProblemException).problem.status).toBe(422);
+  });
+
+  it('rejects combining exceptionFactory with problemDetails', () => {
+    expect(
+      () =>
+        new SchemaClassValidationPipe({
+          exceptionFactory: () => new BadRequestException(),
+          problemDetails: true,
+        }),
+    ).toThrow(TypeError);
   });
 });
