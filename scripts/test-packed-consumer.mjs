@@ -46,7 +46,9 @@ try {
   }
 
   writeFileSync(packagePath, `${JSON.stringify(packageJson, null, 2)}\n`);
-  writeStandaloneWorkspaceConfig(consumerRoot);
+  writeStandaloneWorkspaceConfig(consumerRoot, {
+    typescript7: typescript7Mode,
+  });
   writePluginDisabledConfigs(consumerRoot);
 
   runPnpm(
@@ -154,7 +156,18 @@ function shouldCopyExamplePath(source) {
   );
 }
 
-function writeStandaloneWorkspaceConfig(root) {
+function writeStandaloneWorkspaceConfig(root, { typescript7 }) {
+  // Nest Swagger 12.1 declares an optional `typescript: ^5.5.0 || ^6.0.0` peer
+  // for its own compiler plugin. Allow only that upstream peer so `pnpm peers
+  // check` keeps verifying this package's TypeScript 7 range.
+  const peerDependencyRules = typescript7
+    ? `
+peerDependencyRules:
+  allowedVersions:
+    '@nestjs/swagger>typescript': '7'
+`
+    : '';
+
   writeFileSync(
     join(root, 'pnpm-workspace.yaml'),
     `packages:
@@ -165,7 +178,7 @@ overrides:
 
 allowBuilds:
   '@nestjs/core': false
-`,
+${peerDependencyRules}`,
   );
 }
 
